@@ -1,0 +1,11 @@
+module test;
+
+interface io
+{
+	void write(string name);
+}
+
+void main()
+{
+	io.write("Hello");
+}

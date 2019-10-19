@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/scll
+scll.so
+scll.dylib
+scll.dll
+scll.a
+scll.lib
+scll-test-*
+*.exe
+*.o
+*.obj
+*.lst

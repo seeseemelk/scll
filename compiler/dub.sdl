@@ -1,0 +1,7 @@
+name "scll"
+description "A compiler for SCLL"
+authors "Sebastiaan de Schaetzen"
+copyright "Copyright © 2019, Sebastiaan de Schaetzen"
+license "Apache-2.0"
+dependency "pegged" version="~>0.4.4"
+dependency "cli-d" version="~>0.1.1"
