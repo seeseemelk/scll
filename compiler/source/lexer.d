@@ -18,7 +18,7 @@ SCLL:
     MultiLineComment <~ "/*" (!"*/" .)* "*/"
 
     ModuleDeclaration < "module" PathIdentifier ";"
-    Definition < InterfaceDefinition / MethodDeclaration
+    Definition < InterfaceDefinition / MethodDeclaration / StructDeclaration / GlobalDeclaration
 
     InterfaceDefinition <
         "interface" PathIdentifier
@@ -34,20 +34,48 @@ SCLL:
         "{"
             Statement*
         "}"
+	
+	ConstructorDeclaration <
+		"new" "(" ParameterList? ")"
+		"{"
+			Statement*
+		"}"
+	
+	StructDeclaration <
+		"struct" Identifier
+		"{"
+			( VariableDeclaration ";"
+			/ MethodDeclaration
+			/ ConstructorDeclaration
+			)*
+		"}"
+	VariableDeclaration < PathIdentifier Identifier
 
-    Statement < (CallStatement) ";"
+	GlobalDeclaration < PathIdentifier Identifier ';'
+
+    Statement < 
+		( CallStatement
+		/ DeclaringAssignmentStatement
+		/ AssignmentStatement
+		) ";"
 
     CallStatement < PathIdentifier "(" ArgumentList? ")"
     ArgumentList < Expression ("," Expression)*
 
-    Expression < Literal
+	DeclaringAssignmentStatement < PathIdentifier Identifier "=" Expression
+	AssignmentStatement < PathIdentifier "=" Expression
 
-    Literal < Identifier / StringLiteral
+    Expression < TerminalExpression
+	TerminalExpression < ConstructionExpression / Literal
+	ConstructionExpression < "new" PathIdentifier "(" ArgumentList? ")"
+
+    Literal < Identifier / StringLiteral / NumberLiteral
     StringLiteral <~ :doublequote (!doublequote .)* :doublequote
+	NumberLiteral < digit+
 
     PathIdentifier <- Identifier ("." Identifier)*
 
-    Keyword <- ("module" / "interface") !ValidIdentifierCharacter
+    Keyword <- ("module" / "interface" / "struct" / "trait" / "new") !ValidIdentifierCharacter
     Identifier <~ !Keyword !digit ValidIdentifierCharacter+
     ValidIdentifierCharacter <~ alpha / Alpha / digit
 `));
@@ -121,4 +149,17 @@ unittest
     // interface test {}
     module test;
     `;
+
+	assertDocumentParses!`struct Test{}`;
+	assertDocumentParses!`struct Test{int a;}`;
+	assertDocumentParses!`struct Test{int a; Test t;}`;
+
+	assertDocumentParses!`struct Test{void method() {}}`;
+	assertDocumentParses!`struct Test{new() {}}`;
+
+	assertDocumentParses!`struct Test{new() {t = 4;}}`;
+	assertDocumentParses!`struct Test{new() {int t = 4;}}`;
+	assertDocumentParses!`int wow;`;
+
+	assertDocumentParses!`void test() {Weapon t = new Weapon();}`;
 }

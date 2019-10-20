@@ -3,6 +3,7 @@ import std.file;
 
 import lexer;
 import parser;
+import validator.validator;
 import luacompiler;
 import pegged.parser;
 import clid : P = Parameter, Required, parseArguments, Description;
@@ -44,5 +45,10 @@ void main()
 	}
 
 	Document document = Document(tree);
+
+	scope Library library = new Library();
+	library.addDocument(document);
+	library.validateDocument(document);
+
 	writeln(compileToLua(document));
 }

@@ -5,7 +5,23 @@ interface io
 	void write(string name);
 }
 
+struct Weapon
+{
+	val a;
+
+	new()
+	{
+		a = 4;
+	}
+
+	void print()
+	{
+		io.write(a);
+	}
+}
+
 void main()
 {
-	io.write("Hello");
+	Weapon weapon = new Weapon();
+	weapon.print();
 }

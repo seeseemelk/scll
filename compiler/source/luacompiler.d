@@ -100,6 +100,9 @@ private:
             case Statement.StatementType.call:
                 generateCallStatement(statement.callStatement);
                 break;
+			case Statement.StatementType.declaringAssignment:
+				generateDeclaringAssignmentStatement(statement.declaringAssignmentStatement);
+				break;
         }
     }
 
@@ -118,6 +121,14 @@ private:
         );
     }
 
+	void generateDeclaringAssignmentStatement(const ref DeclaringAssignmentStatement statement)
+	{
+		addLine!"local %s = %s"(
+			statement.name,
+			visitExpression(statement.expression)
+		);
+	}
+
     string visitExpression(const ref Expression expression)
     {
         final switch (expression.type)
@@ -126,6 +137,8 @@ private:
                 return expression.identifier;
             case Expression.ExpressionType.stringLiteral:
                 return asStringLiteral(expression.stringLiteral);
+			case Expression.ExpressionType.constructionExpression:
+				return visitConstructionExpression(expression.constructionExpression);
         }
     }
 
@@ -133,6 +146,11 @@ private:
     {
         return '"' ~ text ~ '"';
     }
+
+	string visitConstructionExpression(const ref ConstructionExpression expression)
+	{
+		return format!"%s.new()"(expression.type);
+	}
 }
 
 string compileToLua(const ref Document document)
