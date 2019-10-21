@@ -3,6 +3,7 @@ module validator.validator;
 import validator.fqn;
 import validator.types;
 import parser;
+import std.stdio;
 
 private class LibraryMethod
 {
@@ -52,6 +53,14 @@ class Library
 			{
 				libraryStruct.members ~= new NamedType(makeFQN(member.type), member.name);
 			}
+
+			foreach (method; structure.methods)
+			{
+				LibraryMethod libraryMethod = new LibraryMethod();
+				libraryMethod.name = makeFQN(libraryStruct.name, method.definition.name);
+				addMethod(libraryMethod);
+			}
+
 			addStructure(libraryStruct);
 		}
     }
@@ -87,13 +96,12 @@ class Library
 	void validateDeclaringAssignmentStatement(Context context,
 			const ref Document document, const ref DeclaringAssignmentStatement statement)
 	{
-		Type type = makeType(makeFQN(statement.type));
+		Type type = makeType(makeFQN(document, statement.type));
 		if (!type.isPrimitive())
 		{
 			findStruct(document, statement.type);
 		}
 		context.variables[statement.name] = type;
-		//new NamedType(type, statement.name);
 
 		Type expressionType = typeOfExpression(context, document, statement.expression);
 		if (expressionType != type)
@@ -143,7 +151,7 @@ class Library
 
 	Type typeOfConstruction(Context context, const ref Document document, const ref ConstructionExpression expression)
 	{
-		return makeType(makeFQN(expression.type));
+		return makeType(makeFQN(document, expression.type));
 	}
 
 	LibraryMethod findMethod(const ref Document document, const ref PathIdentifier path)

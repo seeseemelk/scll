@@ -81,3 +81,14 @@ FQN makeLocalFQN(const ref Document document, const ref PathIdentifier path)
 	else
 		return makeFQN(path);
 }
+
+FQN makeFQN(const ref FQN baseFQN, string name)
+{
+	FQN fqn;
+	foreach (part; baseFQN.parts)
+	{
+		fqn.parts ~= part;
+	}
+	fqn.parts ~= name;
+	return fqn;
+}
