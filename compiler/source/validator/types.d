@@ -2,6 +2,19 @@ module validator.types;
 
 import validator.fqn;
 
+bool isPrimitive(string type)
+{
+	switch (type)
+	{
+		case "string":
+		case "var":
+		case "void":
+			return true;
+		default:
+			return false;
+	}
+}
+
 /// Creates a Type object from an identifier.
 Type makeType(FQN fqn)
 {
@@ -11,7 +24,7 @@ Type makeType(FQN fqn)
 		switch (type)
 		{
 			case "string":
-			case "val":
+			case "var":
 			case "void":
 				return new PrimitiveType(type);
 			default:
