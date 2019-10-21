@@ -6,14 +6,30 @@ import validator.types;
 
 class LibraryStructMember
 {
+	string name;
 	Type type;
 }
 
-class LibraryStruct
+class LibraryStruct : Type
 {
+	const StructDefinition definition;
 	FQN name;
-
 	LibraryStructMember[] members;
+
+	this(const StructDefinition definition)
+	{
+		this.definition = definition;
+	}
+
+	bool isPrimitive()
+	{
+		return false;
+	}
+
+	FQN type()
+	{
+		return name;
+	}
 }
 
 class LibraryDocument
@@ -22,7 +38,7 @@ class LibraryDocument
 	FQN name;
 	LibraryStruct[] structs;
 
-	this(const(Document) document)
+	this(const Document document)
 	{
 		this.document = document;
 	}
@@ -30,6 +46,16 @@ class LibraryDocument
 	FQN childFQN(string child)
 	{
 		return makeFQN(name, child);
+	}
+
+	Type findType(string name)
+	{
+		foreach (structure; structs)
+		{
+			if (structure.name.parts[$-1] == name)
+				return structure;
+		}
+		throw new Exception("Type " ~ name ~ " not found");
 	}
 }
 
@@ -42,7 +68,7 @@ class Library
 
 		foreach (structure; document.structs)
 		{
-			LibraryStruct libraryStruct = new LibraryStruct();
+			LibraryStruct libraryStruct = new LibraryStruct(structure);
 			libraryStruct.name = libraryDocument.childFQN(structure.name);
 			libraryDocument.structs ~= libraryStruct;
 		}
@@ -56,7 +82,38 @@ class Library
 		foreach (LibraryDocument document; _documents)
 		{
 			// Parse struct members and methods.
+			foreach (structure; document.structs)
+			{
+				foreach (ref member; structure.definition.variables)
+				{
+					LibraryStructMember structMember = new LibraryStructMember();
+					structMember.name = member.name;
+					structMember.type = findType(member.type);
+					structure.members ~= structMember;
+				}
+			}
 		}
+	}
+
+	Type findType(const PathIdentifier identifier)
+	{
+		return findType(makeFQN(identifier));
+	}
+
+	Type findType(FQN fqn)
+	{
+		string moduleName = fqn.parts[0];
+		return findDocument(moduleName).findType(fqn.parts[1]);
+	}
+
+	LibraryDocument findDocument(string moduleName)
+	{
+		foreach (document; _documents)
+		{
+			if (document.name.parts[0] == moduleName)
+				return document;
+		}
+		throw new Exception("Module " ~ moduleName ~ " not found");
 	}
 
 private:
@@ -73,7 +130,9 @@ version (unittest)
 		Library library = new Library();
 		ParseTree parsetree = lexDocument(str);
 		Document document = Document(parsetree);
-		return library.addDocument(document);
+		LibraryDocument libraryDocument = library.addDocument(document);
+		library.firstPass();
+		return libraryDocument;
 	}
 }
 
