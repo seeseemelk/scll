@@ -38,7 +38,7 @@ struct PathIdentifier
 /// Defines an interface
 struct InterfaceDefinition
 {
-    PathIdentifier name;
+    string name;
     MethodDefinition[] methods;
 }
 
@@ -52,6 +52,7 @@ struct MethodDefinition
     this(const ref ParseTree tree)
     {
         assertTree!"SCLL.MethodDefinition"(tree);
+
         returnType = tree.children[0].matches[0];
         name = tree.children[1].matches[0];
 
@@ -106,7 +107,8 @@ struct Statement
     enum StatementType
     {
         call,
-		declaringAssignment
+		declaringAssignment,
+        assignment
     }
 
     StatementType type;
@@ -114,6 +116,7 @@ struct Statement
     {
         CallStatement callStatement;
 		DeclaringAssignmentStatement declaringAssignmentStatement;
+        AssignmentStatement assignmentStatement;
     }
 
     this(const ref ParseTree tree)
@@ -135,6 +138,10 @@ private:
 				type = StatementType.declaringAssignment;
 				declaringAssignmentStatement = DeclaringAssignmentStatement(tree);
 				break;
+            case "SCLL.AssignmentStatement":
+                type = StatementType.assignment;
+                assignmentStatement = AssignmentStatement(tree);
+                break;
             default:
                 assertUnexpected(tree);
         }
@@ -172,12 +179,26 @@ struct DeclaringAssignmentStatement
 	}
 }
 
+struct AssignmentStatement
+{
+    string name;
+    Expression expression;
+
+    this(const ref ParseTree tree)
+    {
+        assertTree!"SCLL.AssignmentStatement"(tree);
+        name = tree.children[0].matches[0];
+        expression = Expression(tree.children[1]);
+    }
+}
+
 struct Expression
 {
     enum ExpressionType
     {
         identifier,
         stringLiteral,
+        numberLiteral,
 		constructionExpression
     }
 
@@ -186,6 +207,7 @@ struct Expression
     {
         string identifier;
         string stringLiteral;
+        string numberLiteral;
 		ConstructionExpression constructionExpression;
     }
 
@@ -227,6 +249,10 @@ private:
                 type = ExpressionType.stringLiteral;
                 identifier = tree.matches[0];
                 break;
+            case "SCLL.NumberLiteral":
+                type = ExpressionType.numberLiteral;
+                identifier = tree.matches[0];
+                break;
             default:
                 assertUnexpected(tree);
         }
@@ -242,7 +268,13 @@ struct ConstructionExpression
 	{
 		type = PathIdentifier(tree.children[0]);
 		if (tree.children.length > 1)
-			throw new Exception("Constructor parameters are not yet supported");
+        {
+            assertTree!"SCLL.ArgumentList"(tree.children[1]);
+            foreach (child; tree.children[1].children)
+            {
+                arguments ~= Expression(child);
+            }
+        }
 	}
 }
 
@@ -296,11 +328,42 @@ struct StructVariable
 }
 
 struct Constructor
-{	
+{
+    Parameter[] parameters;
+    Statement[] statements;
+
 	this(const ref ParseTree tree)
 	{
 		assertTree!"SCLL.ConstructorDeclaration"(tree);
+
+        foreach (child; tree.children)
+        {
+            switch (child.name)
+            {
+                case "SCLL.ParameterList":
+                    visitParameterList(child);
+                    break;
+                case "SCLL.Statement":
+                    visitStatement(child);
+                    break;
+                default:
+                    assertUnexpected(child);
+            }
+        }
 	}
+
+    void visitParameterList(const ref ParseTree tree)
+    {
+        foreach (child; tree.children)
+        {
+            parameters ~= Parameter(child);
+        }
+    }
+
+    void visitStatement(const ref ParseTree tree)
+    {
+        statements ~= Statement(tree);
+    }
 }
 
 /// Contains a document.
@@ -372,7 +435,7 @@ private:
         assertTree!"SCLL.InterfaceDefinition"(tree);
 
         InterfaceDefinition definition;
-        definition.name = PathIdentifier(tree.children[0]);
+        definition.name = tree.children[0].matches[0];
 
         if (tree.children.length > 1)
         {

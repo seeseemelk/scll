@@ -3,6 +3,9 @@ module validator.validator2;
 import parser;
 import validator.fqn;
 import validator.types;
+import std.array;
+import std.algorithm;
+import std.stdio;
 
 class NamedType
 {
@@ -18,7 +21,40 @@ class NamedType
 	}
 }
 
-class LibraryMethod
+class LibraryInterfaceMethod : Type
+{
+	const MethodDefinition method;
+	FQN name;
+	Type returnType;
+	NamedType[] parameters;
+
+	this(const MethodDefinition method)
+	{
+		this.method = method;
+	}
+
+	bool isPrimitive() const
+	{
+		return false;
+	}
+
+	bool isInstantiableWith(const Type[] types) const
+	{
+		foreach (i, parameter; parameters)
+		{
+			if (!parameter.type.isInstantiableWith([types[i]]))
+				return false;
+		}
+		return true;
+	}
+
+	const(FQN) type() const
+	{
+		return name;
+	}
+}
+
+class LibraryMethod : Type
 {
 	const Method method;
 	FQN name;
@@ -29,6 +65,38 @@ class LibraryMethod
 	{
 		this.method = method;
 	}
+
+	bool isPrimitive() const
+	{
+		return false;
+	}
+
+	bool isInstantiableWith(const Type[] types) const
+	{
+		foreach (i, parameter; parameters)
+		{
+			if (!parameter.type.isInstantiableWith([types[i]]))
+				return false;
+		}
+		return true;
+	}
+
+	const(FQN) type() const
+	{
+		return name;
+	}
+}
+
+class LibraryConstructor
+{
+	const Constructor constructor;
+	NamedType[] parameters;
+	LibraryStatement[] statements;
+
+	this(const Constructor constructor)
+	{
+		this.constructor = constructor;
+	}
 }
 
 class LibraryStruct : Type
@@ -37,6 +105,7 @@ class LibraryStruct : Type
 	FQN name;
 	NamedType[] members;
 	LibraryMethod[] methods;
+	LibraryConstructor[] constructors;
 
 	this(const StructDefinition definition)
 	{
@@ -48,12 +117,41 @@ class LibraryStruct : Type
 		return makeFQN(name, child);
 	}
 
-	bool isPrimitive()
+	bool isPrimitive() const
 	{
 		return false;
 	}
 
-	FQN type()
+	bool isInstantiableWith(const Type[] types) const
+	{
+		// If we don't have a constructor,
+		// let's check for the default constructor.
+		if (constructors.length == 0 && types.length == 0)
+			return true;
+
+		// Otherwise, check for a real constructor.
+		foreach (constructor; constructors)
+		{
+			if (isInstantiableWith(constructor, types))
+				return true;
+		}
+		return false;
+	}
+
+	bool isInstantiableWith(const LibraryConstructor constructor, const Type[] types) const
+	{
+		if (constructor.parameters.length != types.length)
+			return false;
+		
+		foreach (i, parameter; constructor.parameters)
+		{
+			if (!parameter.type.isInstantiableWith([types[i]]))
+				return false;
+		}
+		return true;
+	}
+
+	const(FQN) type() const
 	{
 		return name;
 	}
@@ -65,6 +163,7 @@ class LibraryDocument
 	FQN name;
 	LibraryStruct[] structs;
 	LibraryMethod[] methods;
+	LibraryInterface[] interfaces;
 
 	this(const Document document)
 	{
@@ -76,14 +175,52 @@ class LibraryDocument
 		return makeFQN(name, child);
 	}
 
-	Type findType(string name)
+	bool hasType(FQN path)
 	{
 		foreach (structure; structs)
 		{
-			if (structure.name.parts[$-1] == name)
+			if (structure.name == path)
+				return true;
+		}
+		return false;
+	}
+
+	Type findType(FQN path)
+	{
+		writeln("Path: " ~ path.toString());
+		foreach (structure; structs)
+		{
+			if (structure.name == path)
 				return structure;
 		}
-		throw new Exception("Type " ~ name ~ " not found");
+
+		foreach (intrf; interfaces)
+		{
+			foreach (method; intrf.methods)
+			{
+				writeln("Interface: " ~ method.name.toString());
+				if (method.name == path)
+					return method;
+			}
+		}
+		throw new Exception("Type " ~ path.toString() ~ " not found");
+	}
+}
+
+class LibraryInterface
+{
+	const InterfaceDefinition intrf;
+	FQN name;
+	LibraryInterfaceMethod[] methods;
+
+	this (const InterfaceDefinition intrf)
+	{
+		this.intrf = intrf;
+	}
+
+	FQN childFQN(string child)
+	{
+		return makeFQN(name, child);
 	}
 }
 
@@ -100,6 +237,12 @@ class Context
 
 class Library
 {
+	void allPasses()
+	{
+		firstPass();
+		secondPass();
+	}
+
 	LibraryDocument addDocument(const ref Document document)
 	{
 		LibraryDocument libraryDocument = new LibraryDocument(document);
@@ -119,6 +262,13 @@ class Library
 				libraryMethod.name = libraryStruct.childFQN(method.definition.name);
 				libraryStruct.methods ~= libraryMethod;
 			}
+
+			// Find every constructor
+			foreach (method; structure.constructors)
+			{
+				LibraryConstructor libraryConstructor = new LibraryConstructor(method);
+				libraryStruct.constructors ~= libraryConstructor;
+			}
 		}
 
 		// Find every method
@@ -129,10 +279,30 @@ class Library
 			libraryDocument.methods ~= libraryMethod;
 		}
 
+		// Find every interface
+		foreach (intrf; document.interfaces)
+		{
+			LibraryInterface libraryInterface = new LibraryInterface(intrf);
+			writeln("Interface: " ~ intrf.name);
+			libraryInterface.name = libraryDocument.childFQN(intrf.name);
+			libraryDocument.interfaces ~= libraryInterface;
+
+			// Find every interface method.
+			foreach (method; intrf.methods)
+			{
+				LibraryInterfaceMethod libraryMethod = new LibraryInterfaceMethod(method);
+				writeln("Interface method name: " ~ method.name);
+				libraryMethod.name = libraryInterface.childFQN(method.name);
+				writeln("Interface method name: " ~ libraryMethod.name.toString());
+				libraryInterface.methods ~= libraryMethod;
+			}
+		}
+
 		_documents ~= libraryDocument;
 		return libraryDocument;
 	}
 
+	/// First pass will resolve all return types and method arguments.
 	void firstPass()
 	{
 		foreach (document; _documents)
@@ -149,6 +319,69 @@ class Library
 					structure.members ~= structMember;
 				}
 
+				// Pass every constructor
+				foreach (constructor; structure.constructors)
+				{
+					foreach (parameter; constructor.constructor.parameters)
+					{
+						constructor.parameters ~= new NamedType(parameter.name, findType(document, parameter.type));
+					}
+				}
+
+				// Pass every struct method
+				firstPassMethods(document, structure.methods);
+			}
+
+			// Pass every interface
+			foreach (intrf; document.interfaces)
+			{
+				// Pass every interface method
+				foreach (method; intrf.methods)
+				{
+					method.returnType = findType(document, method.method.returnType);
+					foreach (parameter; method.method.parameters)
+					{
+						method.parameters ~= new NamedType(parameter.name, findType(document, parameter.type));
+					}
+				}
+			}
+
+			// Pass every method
+			firstPassMethods(document, document.methods);
+		}
+	}
+
+	void firstPassMethods(LibraryDocument document, LibraryMethod[] methods)
+	{
+		foreach (method; methods)
+		{
+			firstPassMethod(document, method);
+		}
+	}
+
+	void firstPassMethod(LibraryDocument document, LibraryMethod method)
+	{
+		method.returnType = findType(document, method.method.definition.returnType);
+		foreach (parameter; method.method.definition.parameters)
+		{
+			method.parameters ~= new NamedType(parameter.name, findType(document, parameter.type));
+		}
+	}
+
+	/// Second pass will validate method bodies.
+	void secondPass()
+	{
+		// Pass every document
+		foreach (document; _documents)
+		{
+			// Pass every struct
+			foreach (structure; document.structs)
+			{
+				// Pass every struct constructor
+				foreach (method; structure.constructors)
+				{
+				}
+
 				// Pass every struct method
 				foreach (method; structure.methods)
 				{
@@ -157,12 +390,7 @@ class Library
 					{
 						context.locals ~= member;
 					}
-
-					method.returnType = findType(document, method.method.definition.returnType);
-					foreach (parameter; method.method.definition.parameters)
-					{
-						method.parameters ~= new NamedType(parameter.name, findType(document, parameter.type));
-					}
+					context.locals ~= new NamedType("this", structure);
 					validateMethod(context, method);
 				}
 			}
@@ -171,11 +399,6 @@ class Library
 			foreach (method; document.methods)
 			{
 				Context context = new Context(document);
-				method.returnType = findType(document, method.method.definition.returnType);
-				foreach (parameter; method.method.definition.parameters)
-				{
-					method.parameters ~= new NamedType(parameter.name, findType(document, parameter.type));
-				}
 				validateMethod(context, method);
 			}
 		}
@@ -189,6 +412,9 @@ class Library
 			{
 				case Statement.StatementType.declaringAssignment:
 					validateDeclaringAssignmentStatement(context, statement.declaringAssignmentStatement);
+					break;
+				case Statement.StatementType.assignment:
+					validateAssignmentStatement(context, statement.assignmentStatement);
 					break;
 				case Statement.StatementType.call:
 					validateCallStatement(context, statement.callStatement);
@@ -205,9 +431,24 @@ class Library
 			throw new Exception("Expected a " ~ targetType.type().toString() ~ ", but got a " ~ expressionType.type().toString());
 	}
 
+	void validateAssignmentStatement(Context context, const AssignmentStatement statement)
+	{
+		Type targetType = findType(context.document, statement.name);
+		Type expressionType = typeOf(context, statement.expression);
+		if (targetType != expressionType)
+			throw new Exception("Expected a " ~ targetType.type().toString() ~ ", but got a " ~ expressionType.type().toString());
+	}
+
 	void validateCallStatement(Context context, const CallStatement statement)
 	{
-		assert(0);
+		Type type = findType(context, statement.targetFunction);
+		Type[] arguments = typesOf(context, statement.arguments);
+
+		if (!type.isInstantiableWith(arguments))
+		{
+			throw new Exception(type.type.toString ~ " is not instantiable with types "
+					~ arguments.map!(arg => arg.type.toString()).join(", "));
+		}
 	}
 
 	Type typeOf(Context context, const Expression expression)
@@ -218,6 +459,8 @@ class Library
 				return typeOf(context, expression.constructionExpression);
 			case Expression.ExpressionType.stringLiteral:
 				return new PrimitiveType("string");
+			case Expression.ExpressionType.numberLiteral:
+				return new PrimitiveType("var");
 			case Expression.ExpressionType.identifier:
 				assert(0);
 		}
@@ -225,8 +468,29 @@ class Library
 
 	Type typeOf(Context context, const ConstructionExpression expression)
 	{
-		// TODO Validate arguments
-		return findType(context, expression.type);
+		Type returnType = findType(context, expression.type);
+
+		Type[] arguments = typesOf(context, expression.arguments);
+
+		if (!returnType.isInstantiableWith(arguments))
+		{
+			throw new Exception(returnType.type.toString ~ " is not instantiable with types "
+					~ arguments.map!(arg => arg.type.toString()).join(", "));
+		}
+		
+		return returnType;
+	}
+
+	Type[] typesOf(Context context, const Expression[] expressions)
+	{
+		Type[] arguments;
+
+		foreach (argument; expressions)
+		{
+			arguments ~= typeOf(context, argument);
+		}
+
+		return arguments;
 	}
 
 	Type findType(Context context, const PathIdentifier identifier)
@@ -243,12 +507,12 @@ class Library
 
 	Type findType(LibraryDocument document, const PathIdentifier identifier)
 	{
-		if (identifier.path.length > 1)
-			return findType(makeFQN(identifier));
-
-		string value = identifier.path[0];
-		if (isPrimitive(value))
-			return new PrimitiveType(value);
+		if (identifier.path.length == 1)
+		{
+			string value = identifier.path[0];
+			if (isPrimitive(value))
+				return new PrimitiveType(value);
+		}
 		
 		return findType(makeFQN(document.document, identifier));
 	}
@@ -256,7 +520,7 @@ class Library
 	Type findType(FQN fqn)
 	{
 		string moduleName = fqn.parts[0];
-		return findDocument(moduleName).findType(fqn.parts[1]);
+		return findDocument(moduleName).findType(fqn);
 	}
 
 	LibraryDocument findDocument(string moduleName)
@@ -284,8 +548,31 @@ version (unittest)
 		ParseTree parsetree = lexDocument(str);
 		Document document = Document(parsetree);
 		LibraryDocument libraryDocument = library.addDocument(document);
-		library.firstPass();
+		library.allPasses();
 		return libraryDocument;
+	}
+
+	void assertParses(string str)
+	{
+		Library library = new Library();
+		ParseTree parsetree = lexDocument(str);
+		Document document = Document(parsetree);
+		LibraryDocument libraryDocument = library.addDocument(document);
+		library.allPasses();
+	}
+
+	void assertNotParses(string str)
+	{
+		try
+		{
+			Library library = new Library();
+			ParseTree parsetree = lexDocument(str);
+			Document document = Document(parsetree);
+			LibraryDocument libraryDocument = library.addDocument(document);
+			library.allPasses();
+			assert(0, "Document validated, but shouldn't have.");
+		}
+		catch (Exception e) {}
 	}
 
 	LibraryDocument parseDocuments(string[] documents)
@@ -297,7 +584,7 @@ version (unittest)
 			ParseTree parsetree = lexDocument(str);
 			Document document = Document(parsetree);
 			libraryDocument = library.addDocument(document);
-			library.firstPass();
+			library.allPasses();
 		}
 		return libraryDocument;
 	}
@@ -353,9 +640,90 @@ unittest
 	MyStruct hello() {}
 	`).methods[0].returnType.type().toString() == "myModule.MyStruct", "Method return type was not correctly parsed");
 
-	assert(parseDocument(`
+	assertParses(`
 	module myModule;
 	struct MyStruct {}
 	void hello() {MyStruct val = new MyStruct();}
-	`));
+	`);
+
+	assertParses(`
+	module myModule;
+	struct MyStruct
+	{
+		new(var param) {}
+	}
+	`);
+
+	assertNotParses(`
+	module myModule;
+	struct MyStruct
+	{
+		new(OtherStruct param) {}
+	}
+	`);
+
+	assertParses(`
+	module myModule;
+	struct OtherStruct {}
+	struct MyStruct
+	{
+		new(OtherStruct param) {}
+	}
+	`);
+
+	assertParses(`
+	module myModule;
+	struct MyStruct
+	{
+		new(var hello) {}
+	}
+	void main()
+	{
+		MyStruct variable = new MyStruct(5);
+	}
+	`);
+
+	assertNotParses(`
+	module myModule;
+	struct MyStruct
+	{
+		new() {}
+	}
+	void main()
+	{
+		MyStruct variable = new MyStruct(5);
+	}
+	`);
+
+	assertNotParses(`
+	module myModule;
+	void main()
+	{
+		io.write("test");
+	}
+	`);
+
+	assertParses(`
+	module myModule;
+	interface io
+	{
+		void write(string name);
+	}
+	void main()
+	{
+		io.write("test");
+	}
+	`);
+
+	assertNotParses(`
+	module myModule;
+	interface io
+	{
+		void write(string name);
+	}
+	void main()
+	{
+		io.write(5);
+	}
+	`);
 }

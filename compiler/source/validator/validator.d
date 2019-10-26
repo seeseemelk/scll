@@ -1,5 +1,5 @@
 module validator.validator;
-
+/*
 import validator.fqn;
 import validator.types;
 import parser;
@@ -196,12 +196,12 @@ class Library
 	{
 		return findType(FQN.makeLocalFQN(document, path));
 	}*/
-
+/*
 private:
 	const Document[] _documents;
     LibraryMethod[FQN] _methods;
 	LibraryStruct[FQN] _structs;
-}
+}*/
 
 /// A first pass library will record structs and method names.
 /// It will ignore struct members, and method return types and parameters.

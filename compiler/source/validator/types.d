@@ -37,7 +37,7 @@ Type makeType(FQN fqn)
 	}
 }
 
-/// A type with a name.
+/*/// A type with a name.
 class NamedType
 {
 	Type type;
@@ -53,16 +53,19 @@ class NamedType
 	{
 		this(makeType(fqn), name);
 	}
-}
+}*/
 
 /// Describes a type in SCLL.
 interface Type
 {
 	/// Returns a FQN of the type.
-	FQN type();
+	const(FQN) type() const;
 
 	/// True if the Type is a primitive type, false if it isn't
-	bool isPrimitive();
+	bool isPrimitive() const;
+
+	/// True if the type can be instantiated with the given types, false if it can't be.
+	bool isInstantiableWith(const Type[] types) const;
 }
 
 class PrimitiveType : Type
@@ -72,14 +75,26 @@ class PrimitiveType : Type
 		_fqn = makeFQN(identifier);
 	}
 
-	FQN type()
+	const(FQN) type() const
 	{
 		return _fqn;
 	}
 
-	bool isPrimitive()
+	bool isPrimitive() const
 	{
 		return true;
+	}
+
+	bool isInstantiableWith(const Type[] types) const
+	{
+		if (types.length != 1)
+			return false;
+		
+		const Type type = types[0];
+		if (!type.isPrimitive())
+			return false;
+		
+		return type.type().toString() == _fqn.toString();
 	}
 
 	override bool opEquals(Object b)
@@ -101,14 +116,19 @@ class UserType : Type
 		_fqn = fqn;
 	}
 
-	FQN type()
+	const(FQN) type() const
 	{
 		return _fqn;
 	}
 
-	bool isPrimitive()
+	bool isPrimitive() const
 	{
 		return false;
+	}
+
+	bool isInstantiableWith(const Type[] types) const
+	{
+		assert(0);
 	}
 
 	override bool opEquals(Object b)

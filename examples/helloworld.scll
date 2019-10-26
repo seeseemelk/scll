@@ -7,7 +7,7 @@ interface io
 
 struct Weapon
 {
-	val a;
+	var a;
 
 	new()
 	{
@@ -16,12 +16,12 @@ struct Weapon
 
 	void print()
 	{
-		io.write(a);
+		//io.write(a);
 	}
 }
 
 void main()
 {
 	Weapon weapon = new Weapon();
-	weapon.print();
+	//weapon.print();
 }

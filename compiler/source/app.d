@@ -1,9 +1,9 @@
-import std.stdio;
-import std.file;
+import std.stdio : writeln;
+import std.file : readText, write;
 
 import lexer;
 import parser;
-import validator.validator;
+import validator.validator2;
 import luacompiler;
 import pegged.parser;
 import clid : P = Parameter, Required, parseArguments, Description;
@@ -16,24 +16,15 @@ struct Arguments
 	@Validate!isFile
 	@Required
 	string file;
+
+	@P("output", 'o')
+	@Description("The output file")
+	string output;
 }
 
 void main()
 {
 	Arguments arguments = parseArguments!Arguments();
-
-	/*ParseTree tree = lexDocument(`
-	module test;
-
-    interface io
-    {
-    	void write(string name);
-    }
-
-    void main()
-    {
-    	io.write("Hello");
-    }`);*/
 
 	ParseTree tree = lexDocument(arguments.file.readText());
 
@@ -47,8 +38,14 @@ void main()
 	Document document = Document(tree);
 
 	scope Library library = new Library();
-	library.addDocument(document);
-	library.validateDocument(document);
+	LibraryDocument documentToCompile = library.addDocument(document);
+	library.allPasses();
 
-	writeln(compileToLua(document));
+	string output = compileToLua(documentToCompile);
+	writeln(output);
+
+	if (arguments.output.length > 0)
+	{
+		write(arguments.output, output);
+	}
 }

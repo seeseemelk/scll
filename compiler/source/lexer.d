@@ -21,7 +21,7 @@ SCLL:
     Definition < InterfaceDefinition / MethodDeclaration / StructDeclaration / GlobalDeclaration
 
     InterfaceDefinition <
-        "interface" PathIdentifier
+        "interface" Identifier
         "{"
             (MethodDefinition ";")*
         "}"
@@ -108,7 +108,6 @@ unittest
     assertDocumentParses!`
     module test;
     interface io1 {}
-    interface interface2.damn {}
     `;
 
     assertDocumentParses!`
@@ -162,4 +161,6 @@ unittest
 	assertDocumentParses!`int wow;`;
 
 	assertDocumentParses!`void test() {Weapon t = new Weapon();}`;
+
+	assertDocumentParses!`struct Test{new(var test) {}}`;
 }

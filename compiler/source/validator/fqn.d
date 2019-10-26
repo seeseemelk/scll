@@ -30,7 +30,7 @@ struct FQN
 		parts ~= part;
 	}
 
-	string toString()
+	string toString() const
 	{
 		return parts.join(".");
 	}

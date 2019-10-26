@@ -1,17 +1,30 @@
 module luacompiler;
 
+import validator.validator2;
 import parser;
+import validator.types;
 import std.array;
 import std.format;
+import std.algorithm;
+
+private class Context
+{
+    string[string] thisVariables;
+}
 
 class Compiler
 {
-    this(const ref Document document)
+    this(const LibraryDocument document)
     {
         addLine("-- Compiled with version 0.0.1");
-        addLine("-- Module: " ~ document.moduleName.toString());
+        addLine("-- Module: " ~ document.name.toString());
 
         generateModulePreamble(document);
+
+        foreach (structure; document.structs)
+        {
+            generateStructure(structure);
+        }
 
         foreach (method; document.methods)
         {
@@ -69,50 +82,154 @@ private:
         _indentation = _indentation[0 .. $-4];
     }
 
-    void generateModulePreamble(const ref Document document)
+    void generateModulePreamble(const LibraryDocument document)
     {
-        addLine("local _module = {}");
+        addLine("local " ~ document.name.toString() ~ " = {}");
         addLine();
     }
 
-    void generateModulePostamble(const ref Document document)
+    void generateModulePostamble(const LibraryDocument document)
     {
         addLine();
-        addLine("return _module");
+        addLine("return " ~ document.name.toString());
     }
 
-    void generateMethod(const ref Method method)
+    void generateStructure(const LibraryStruct structure)
     {
-        addLine!"function %s()"(method.definition.name);
+        addLine("--[[");
+        addLine!"Struct: %s"(structure.type.toString());
         indent();
-        foreach (statement; method.statements)
+        foreach (member; structure.members)
         {
-            generateStatement(statement);
+            addLine!"%s %s"(member.type.type.toString(), member.name);
+        }
+        undent();
+        addLine("--]]");
+
+        foreach (constructor; structure.constructors)
+        {
+            generateStructConstructor(structure, constructor);
+        }
+    }
+
+    void generateStructConstructor(const LibraryStruct structure, const LibraryConstructor constructor)
+    {
+        string funcName = mangle(structure.name.toString(), constructor.parameters);
+
+        addLine!"%s = function(%s)"(funcName, constructor.parameters.map!(type => type.name).array().join(", "));
+        indent();
+
+        addLine!"local this = {}";
+        foreach (member; structure.members)
+        {
+            addLine!"this.%s = %s"(member.name, getDefaultInstantiator(member.type));
+        }
+
+        foreach (statement; constructor.constructor.statements)
+        {
+            Context context = new Context();
+            foreach (member; structure.members)
+            {
+                context.thisVariables[member.name] = member.name;
+            }
+
+            generateStatement(context, statement);
+        }
+
+        addLine!"return this";
+
+        undent();
+        addLine!"end"();
+            addLine();
+    }
+
+    string mangle(string name, const Type[] types)
+    {
+        if (types.length > 0)
+            return name ~ "_" ~ mangle(types);
+        else
+            return name;
+    }
+
+    string mangle(string name, const NamedType[] types)
+    {
+        return mangle(name, types.map!(type => type.type).array());
+    }
+
+    string mangle(const Type[] types)
+    {
+        return types.map!(type => type.type().parts.join("_")).array().join("__");
+    }
+
+    string mangle(const NamedType[] types)
+    {
+        return mangle(types.map!(type => type.type).array());
+    }
+
+    string getDefaultInstantiator(const Type type)
+    {
+        if (type.isPrimitive)
+        {
+            switch (type.type().parts[$-1])
+            {
+                case "string":
+                    return `""`;
+                case "var":
+                    return "0";
+                default:
+                    throw new Exception("Unexpected primitive type: " ~ type.type().toString());
+            }
+        }
+        
+        if (type.isInstantiableWith([]))
+        {
+            throw new Exception("Advanced instantiation is not yet supported");
+        }
+        throw new Exception("Type is not instantiable without parameters");
+    }
+
+    void generateMethod(const ref LibraryMethod method)
+    {
+        string name = mangle(method.name.toString(), method.parameters);
+        addLine!"%s = function()"(name);
+        indent();
+        Context context = new Context();
+        foreach (statement; method.method.statements)
+        {
+            generateStatement(context, statement);
         }
         undent();
         addLine!"end";
+
+        if (method.name.parts[$-1] == "main")
+        {
+            addLine!"%s({...})"(name);
+        }
     }
 
-    void generateStatement(const ref Statement statement)
+    void generateStatement(Context context, const ref Statement statement)
     {
         final switch (statement.type)
         {
             case Statement.StatementType.call:
-                generateCallStatement(statement.callStatement);
+                generateCallStatement(context, statement.callStatement);
                 break;
 			case Statement.StatementType.declaringAssignment:
-				generateDeclaringAssignmentStatement(statement.declaringAssignmentStatement);
+				generateDeclaringAssignmentStatement(context, statement.declaringAssignmentStatement);
 				break;
+            case Statement.StatementType.assignment:
+                generateAssignmentStatement(context, statement.assignmentStatement);
+                break;
         }
     }
 
-    void generateCallStatement(const ref CallStatement statement)
+    void generateCallStatement(Context context, const ref CallStatement statement)
     {
         string[] arguments;
 
         foreach (expression; statement.arguments)
         {
-            arguments ~= visitExpression(expression);
+            arguments ~= visitExpression(context, expression);
         }
 
         addLine!"%s(%s)"(
@@ -121,15 +238,29 @@ private:
         );
     }
 
-	void generateDeclaringAssignmentStatement(const ref DeclaringAssignmentStatement statement)
+	void generateDeclaringAssignmentStatement(Context context, const ref DeclaringAssignmentStatement statement)
 	{
 		addLine!"local %s = %s"(
 			statement.name,
-			visitExpression(statement.expression)
+			visitExpression(context, statement.expression)
 		);
 	}
 
-    string visitExpression(const ref Expression expression)
+    void generateAssignmentStatement(Context context, const ref AssignmentStatement statement)
+    {
+        string name = statement.name;
+        if (context.thisVariables[name])
+        {
+            name = "this." ~ name;
+        }
+
+        addLine!"%s = %s"(
+            name,
+            visitExpression(context, statement.expression)
+        );
+    }
+
+    string visitExpression(Context context, const ref Expression expression)
     {
         final switch (expression.type)
         {
@@ -137,6 +268,8 @@ private:
                 return expression.identifier;
             case Expression.ExpressionType.stringLiteral:
                 return asStringLiteral(expression.stringLiteral);
+            case Expression.ExpressionType.numberLiteral:
+                return expression.numberLiteral;
 			case Expression.ExpressionType.constructionExpression:
 				return visitConstructionExpression(expression.constructionExpression);
         }
@@ -149,11 +282,11 @@ private:
 
 	string visitConstructionExpression(const ref ConstructionExpression expression)
 	{
-		return format!"%s.new()"(expression.type);
+		return format!"%s.new()"(expression.type.toString());
 	}
 }
 
-string compileToLua(const ref Document document)
+string compileToLua(const LibraryDocument document)
 {
     return new Compiler(document).asLua();
 }
