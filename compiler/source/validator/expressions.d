@@ -2,15 +2,19 @@ module validator.expressions;
 
 import validator.types;
 
-/*enum ExpressionType
+interface ExpressionVisitor
 {
-	constructionExpression,
-	numberLiteralExpression
-}*/
+	void visitConstructionExpression(const LibraryConstructionExpression expression);
+	void visitNumberLiteralExpression(const LibraryNumberLiteralExpression expression);
+	void visitStringExpression(const LibraryStringExpression expression);
+	void visitAddSubExpression(const LibraryAddSubExpression expression);
+	void visitMulDivModExpression(const LibraryMulDivModExpression expression);
+}
 
 interface LibraryExpression
 {
 	Type resultType();
+	void visit(ExpressionVisitor visitor) const;
 }
 
 class LibraryConstructionExpression : LibraryExpression
@@ -18,29 +22,29 @@ class LibraryConstructionExpression : LibraryExpression
 	Type constructorType;
 	LibraryExpression[] arguments;
 
-	/*ExpressionType expressionType()
-	{
-		return ExpressionType.constructionExpression;
-	}*/
-
 	Type resultType()
 	{
 		return constructorType;
+	}
+
+	void visit(ExpressionVisitor visitor) const
+	{
+		visitor.visitConstructionExpression(this);
 	}
 }
 
 class LibraryNumberLiteralExpression : LibraryExpression
 {
 	string number;
-
-	/*ExpressionType expressionType()
-	{
-		return ExpressionType.numberLiteralExpression;
-	}*/
  
 	Type resultType()
 	{
 		return new PrimitiveType("var");
+	}
+
+	void visit(ExpressionVisitor visitor) const
+	{
+		visitor.visitNumberLiteralExpression(this);
 	}
 }
 
@@ -52,14 +56,43 @@ class LibraryStringExpression : LibraryExpression
 	{
 		return new PrimitiveType("string");
 	}
+
+	void visit(ExpressionVisitor visitor) const
+	{
+		visitor.visitStringExpression(this);
+	}
 }
 
-/*class LibraryExpression
+class LibraryAddSubExpression : LibraryExpression
 {
-	ExpressionType type;
+	LibraryExpression[] expressions;
 
-	union
+	Type resultType()
 	{
-		LibraryConstructionExpression constructionExpression;
+		if (expressions.length == 1)
+			return expressions[0].resultType();
+		return new PrimitiveType("var");
 	}
-}*/
+
+	void visit(ExpressionVisitor visitor) const
+	{
+		visitor.visitAddSubExpression(this);
+	}
+}
+
+class LibraryMulDivModExpression : LibraryExpression
+{
+	LibraryExpression[] expressions;
+
+	Type resultType()
+	{
+		if (expressions.length == 1)
+			return expressions[0].resultType();
+		return new PrimitiveType("var");
+	}
+
+	void visit(ExpressionVisitor visitor) const
+	{
+		visitor.visitMulDivModExpression(this);
+	}
+}

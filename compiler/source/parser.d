@@ -192,23 +192,23 @@ struct AssignmentStatement
     }
 }
 
-struct Expression
+/*struct Expression
 {
     enum ExpressionType
     {
-        identifier,
-        stringLiteral,
-        numberLiteral,
-		constructionExpression
+        terminalExpression,
+		constructionExpression,
+		addSubExpression,
+		mulDivModExpression
     }
 
     ExpressionType type;
     union
     {
-        string identifier;
-        string stringLiteral;
-        string numberLiteral;
+		TerminalExpression terminalExpression;
 		ConstructionExpression constructionExpression;
+		AddSubExpression addSubExpression;
+		MulDivModExpression mulDivModExpression;
     }
 
     this(const ref ParseTree tree)
@@ -222,25 +222,66 @@ private:
     {
         switch (tree.name)
         {
-            case "SCLL.Literal":
-                visitLiteral(tree.children[0]);
-                break;
-			case "SCLL.TerminalExpression":
+			/*case "SCLL.TerminalExpression":
+				type = ExpressionType.terminalExpression;
 				visitChild(tree.children[0]);
 				break;
 			case "SCLL.ConstructionExpression":
 				type = ExpressionType.constructionExpression;
-				constructionExpression = ConstructionExpression(tree);
-				break;
-            default:
+				constructionExpression = ConstructionExpression(tree.children[0]);
+				break;*/
+            /*default:
                 assertUnexpected(tree);
         }
     }
 
-    void visitLiteral(const ref ParseTree tree)
+    
+}*/
+
+struct Expression
+{
+	AddSubExpression addSubExpression;
+
+	this(const ref ParseTree tree)
+	{
+		assertTree!"SCLL.Expression"(tree);
+		addSubExpression = AddSubExpression(tree.children[0]);
+	}
+}
+
+struct TerminalExpression
+{
+    enum ExpressionType
     {
+        identifier,
+        stringLiteral,
+        numberLiteral,
+		constructionExpression
+	}
+
+    ExpressionType type;
+    union
+    {
+        string identifier;
+        string stringLiteral;
+        string numberLiteral;
+		ConstructionExpression constructionExpression;
+	}
+
+	this(const ref ParseTree tree)
+	{
+        assertTree!"SCLL.TerminalExpression"(tree);
+		visitChild(tree.children[0]);
+    }
+
+	void visitChild(const ref ParseTree tree)
+	{
         switch (tree.name)
         {
+			case "SCLL.ConstructionExpression":
+				type = ExpressionType.constructionExpression;
+				constructionExpression = ConstructionExpression(tree);
+				break;
             case "SCLL.Identifier":
                 type = ExpressionType.identifier;
                 identifier = tree.matches[0];
@@ -253,10 +294,13 @@ private:
                 type = ExpressionType.numberLiteral;
                 identifier = tree.matches[0];
                 break;
+			case "SCLL.Literal":
+				visitChild(tree.children[0]);
+				break;
             default:
                 assertUnexpected(tree);
         }
-    }
+	}
 }
 
 struct ConstructionExpression
@@ -266,6 +310,7 @@ struct ConstructionExpression
 
 	this(const ref ParseTree tree)
 	{
+        assertTree!"SCLL.ConstructionExpression"(tree);
 		type = PathIdentifier(tree.children[0]);
 		if (tree.children.length > 1)
         {
@@ -275,6 +320,34 @@ struct ConstructionExpression
                 arguments ~= Expression(child);
             }
         }
+	}
+}
+
+struct AddSubExpression
+{
+	MulDivModExpression[] operands;
+
+	this(const ref ParseTree tree)
+	{
+        assertTree!"SCLL.AddSubExpression"(tree);
+		foreach (child; tree.children)
+		{
+			operands ~= MulDivModExpression(child);
+		}
+	}
+}
+
+struct MulDivModExpression
+{
+	TerminalExpression[] operands;
+
+	this(const ref ParseTree tree)
+	{
+        assertTree!"SCLL.MulDivModExpression"(tree);
+		foreach (child; tree.children)
+		{
+			operands ~= TerminalExpression(child);
+		}
 	}
 }
 

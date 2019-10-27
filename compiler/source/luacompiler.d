@@ -1,8 +1,10 @@
 module luacompiler;
 
 import validator.validator2;
-import parser;
 import validator.types;
+import validator.statements;
+import validator.expressions;
+import parser;
 import std.array;
 import std.format;
 import std.algorithm;
@@ -12,7 +14,7 @@ private class Context
     string[string] thisVariables;
 }
 
-class Compiler
+class Compiler : StatementVisitor
 {
     this(const LibraryDocument document)
     {
@@ -39,9 +41,31 @@ class Compiler
         return _buffer;
     }
 
+	void visitDeclaringAssignmentStatement(const LibraryDeclaringAssignmentStatement statement)
+	{
+		string name = statement.variableName;
+		string expression = visitExpression(statement.expression);
+		addLine!"local %s = %s"(name, expression);
+	}
+
+	void visitAssignmentStatement(const LibraryAssignmentStatement statement)
+	{
+		string name = statement.variableName.toString();
+		string expression = visitExpression(statement.expression);
+		addLine!"%s = %s"(name, expression);
+	}
+
+	void visitCallStatement(const LibraryCallStatement statement)
+	{
+		string name = statement.targetMethod.fqn().toString();
+		string[] expressions = statement.expressions.map!(exp => visitExpression(exp)).array();
+		addLine!"%s(%s)"(name, expressions.join(", "));
+	}
+
 private:
     string _buffer;
     string _indentation = "";
+	Context _context;
 
     void add(string code)
     {
@@ -125,15 +149,15 @@ private:
             addLine!"this.%s = %s"(member.name, getDefaultInstantiator(member.type));
         }
 
-        foreach (statement; constructor.constructor.statements)
+        _context = new Context();
+        foreach (statement; constructor.statements)
         {
-            Context context = new Context();
             foreach (member; structure.members)
             {
-                context.thisVariables[member.name] = member.name;
+                _context.thisVariables[member.name] = member.name;
             }
 
-            generateStatement(context, statement);
+			statement.visit(this);
         }
 
         addLine!"return this";
@@ -193,10 +217,10 @@ private:
         string name = mangle(method.name.toString(), method.parameters);
         addLine!"%s = function()"(name);
         indent();
-        Context context = new Context();
-        foreach (statement; method.method.statements)
+        _context = new Context();
+        foreach (statement; method.statements)
         {
-            generateStatement(context, statement);
+			statement.visit(this);
         }
         undent();
         addLine!"end";
@@ -207,82 +231,47 @@ private:
         }
     }
 
-    void generateStatement(Context context, const ref Statement statement)
-    {
-        final switch (statement.type)
-        {
-            case Statement.StatementType.call:
-                generateCallStatement(context, statement.callStatement);
-                break;
-			case Statement.StatementType.declaringAssignment:
-				generateDeclaringAssignmentStatement(context, statement.declaringAssignmentStatement);
-				break;
-            case Statement.StatementType.assignment:
-                generateAssignmentStatement(context, statement.assignmentStatement);
-                break;
-        }
-    }
-
-    void generateCallStatement(Context context, const ref CallStatement statement)
-    {
-        string[] arguments;
-
-        foreach (expression; statement.arguments)
-        {
-            arguments ~= visitExpression(context, expression);
-        }
-
-        addLine!"%s(%s)"(
-            statement.targetFunction.toString(),
-            arguments.join(", ")
-        );
-    }
-
-	void generateDeclaringAssignmentStatement(Context context, const ref DeclaringAssignmentStatement statement)
+	string visitExpression(const LibraryExpression expression)
 	{
-		addLine!"local %s = %s"(
-			statement.name,
-			visitExpression(context, statement.expression)
-		);
+		LuaExpressionBuilder builder = new LuaExpressionBuilder(_context);
+		expression.visit(builder);
+		return builder.buffer;
+	}
+}
+
+private class LuaExpressionBuilder : ExpressionVisitor
+{
+	Context context;
+	string buffer;
+
+	this(Context context)
+	{
+		this.context = context;
+	}
+	
+	void visitConstructionExpression(const LibraryConstructionExpression expression)
+	{
+		buffer = format!"%s.new()"(expression.constructorType.fqn().toString());
 	}
 
-    void generateAssignmentStatement(Context context, const ref AssignmentStatement statement)
-    {
-        string name = statement.name;
-        if (context.thisVariables[name])
-        {
-            name = "this." ~ name;
-        }
-
-        addLine!"%s = %s"(
-            name,
-            visitExpression(context, statement.expression)
-        );
-    }
-
-    string visitExpression(Context context, const ref Expression expression)
-    {
-        final switch (expression.type)
-        {
-            case Expression.ExpressionType.identifier:
-                return expression.identifier;
-            case Expression.ExpressionType.stringLiteral:
-                return asStringLiteral(expression.stringLiteral);
-            case Expression.ExpressionType.numberLiteral:
-                return expression.numberLiteral;
-			case Expression.ExpressionType.constructionExpression:
-				return visitConstructionExpression(expression.constructionExpression);
-        }
-    }
-
-    string asStringLiteral(string text)
-    {
-        return '"' ~ text ~ '"';
-    }
-
-	string visitConstructionExpression(const ref ConstructionExpression expression)
+	void visitNumberLiteralExpression(const LibraryNumberLiteralExpression expression)
 	{
-		return format!"%s.new()"(expression.type.toString());
+		buffer = expression.number;
+	}
+
+	void visitStringExpression(const LibraryStringExpression expression)
+	{
+		buffer = format!`"%s"`(expression.value);
+	}
+
+	void visitAddSubExpression(const LibraryAddSubExpression expression)
+	{
+		
+	}
+
+	void visitMulDivModExpression(const LibraryMulDivModExpression expression)
+	{
+		
 	}
 }
 

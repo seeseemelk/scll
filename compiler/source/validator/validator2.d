@@ -555,15 +555,31 @@ class Library
 
 	LibraryExpression createExpression(Context context, const Expression expression)
 	{
-		final switch (expression.type)
+		/*final switch (expression.type)
 		{
+			case Expression.ExpressionType.terminalExpression:
+				return createTerminalExpression(context, expression.terminalExpression);
 			case Expression.ExpressionType.constructionExpression:
 				return createConstructionExpression(context, expression.constructionExpression);
-			case Expression.ExpressionType.numberLiteral:
+			case Expression.ExpressionType.addSubExpression:
+				return createAddSubExpression(context, expression.addSubExpression);
+			case Expression.ExpressionType.mulDivModExpression:
+				return createMulDivModExpression(context, expression.mulDivModExpression);
+		}*/
+		return createAddSubExpression(context, expression.addSubExpression);
+	}
+
+	LibraryExpression createTerminalExpression(Context context, const TerminalExpression expression)
+	{
+		final switch (expression.type)
+		{
+			case TerminalExpression.ExpressionType.numberLiteral:
 				return createNumberExpression(context, expression.numberLiteral);
-			case Expression.ExpressionType.stringLiteral:
+			case TerminalExpression.ExpressionType.stringLiteral:
 				return createStringExpression(context, expression.stringLiteral);
-			case Expression.ExpressionType.identifier:
+			case TerminalExpression.ExpressionType.constructionExpression:
+				return createConstructionExpression(context, expression.constructionExpression);
+			case TerminalExpression.ExpressionType.identifier:
 				assert(0, "Identifier not implemented");
 		}
 	}
@@ -598,48 +614,33 @@ class Library
 		lexpression.value = value;
 		return lexpression;
 	}
-
-	/*Type typeOf(Context context, const Expression expression)
+	
+	LibraryAddSubExpression createAddSubExpression(Context context, const AddSubExpression expression)
 	{
-		final switch (expression.type)
-		{
-			case Expression.ExpressionType.constructionExpression:
-				return typeOf(context, expression.constructionExpression);
-			case Expression.ExpressionType.stringLiteral:
-				return new PrimitiveType("string");
-			case Expression.ExpressionType.numberLiteral:
-				return new PrimitiveType("var");
-			case Expression.ExpressionType.identifier:
-				assert(0);
-		}
+		LibraryAddSubExpression lexpression = new LibraryAddSubExpression();
+		foreach (child; expression.operands)
+			lexpression.expressions ~= createMulDivModExpression(context, child);
+		requireExpressionsAre("var", lexpression.expressions);
+		return lexpression;
+	}
+	
+	LibraryMulDivModExpression createMulDivModExpression(Context context, const MulDivModExpression expression)
+	{
+		LibraryMulDivModExpression lexpression = new LibraryMulDivModExpression();
+		foreach (child; expression.operands)
+			lexpression.expressions ~= createTerminalExpression(context, child);
+		requireExpressionsAre("var", lexpression.expressions);
+		return lexpression;
 	}
 
-	Type typeOf(Context context, const ConstructionExpression expression)
+	void requireExpressionsAre(string type, LibraryExpression[] expressions)
 	{
-		Type returnType = findType(context, expression.type);
-
-		Type[] arguments = typesOf(context, expression.arguments);
-
-		if (!returnType.isInstantiableWith(arguments))
-		{
-			throw new Exception(returnType.type.toString ~ " is not instantiable with types "
-					~ arguments.map!(arg => arg.type.toString()).join(", "));
-		}
-		
-		return returnType;
+		if (expressions.length == 1)
+			return;
+		foreach (child; expressions)
+			if (child.resultType().fqn().toString() != type)
+				throw new Exception("Arithmetic with " ~ child.resultType().fqn().toString() ~ " is not legal");
 	}
-
-	Type[] typesOf(Context context, const Expression[] expressions)
-	{
-		Type[] arguments;
-
-		foreach (argument; expressions)
-		{
-			arguments ~= typeOf(context, argument);
-		}
-
-		return arguments;
-	}*/
 
 	Type findType(Context context, const PathIdentifier identifier)
 	{
@@ -719,6 +720,7 @@ version (unittest)
 	{
 		Library library = new Library();
 		ParseTree parsetree = lexDocument(str);
+		writeln(parsetree.toString());
 		Document document = Document(parsetree);
 		LibraryDocument libraryDocument = library.addDocument(document);
 		library.allPasses();
@@ -887,6 +889,20 @@ unittest
 	void main()
 	{
 		io.write(5);
+	}
+	`);
+
+	assertParses(`
+	void main()
+	{
+		var t = 5 + 5;
+	}
+	`);
+
+	assertNotParses(`
+	void main()
+	{
+		var t = 5 + "wow";
 	}
 	`);
 }

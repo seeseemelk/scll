@@ -65,7 +65,9 @@ SCLL:
 	DeclaringAssignmentStatement < PathIdentifier Identifier "=" Expression
 	AssignmentStatement < PathIdentifier "=" Expression
 
-    Expression < TerminalExpression
+    Expression < AddSubExpression
+	AddSubExpression < MulDivModExpression (("+" / "-") MulDivModExpression)*
+	MulDivModExpression < TerminalExpression (("*" / "/" / "%") TerminalExpression)*
 	TerminalExpression < ConstructionExpression / Literal
 	ConstructionExpression < "new" PathIdentifier "(" ArgumentList? ")"
 
@@ -163,4 +165,11 @@ unittest
 	assertDocumentParses!`void test() {Weapon t = new Weapon();}`;
 
 	assertDocumentParses!`struct Test{new(var test) {}}`;
+
+	assertDocumentParses!`void test() {var t = 5 + 5;}`;
+	assertDocumentParses!`void test() {var t = 5 - 5;}`;
+	assertDocumentParses!`void test() {var t = 5 * 5;}`;
+	assertDocumentParses!`void test() {var t = 5 / 5;}`;
+	assertDocumentParses!`void test() {var t = 5 % 5;}`;
+	assertDocumentParses!`void test() {var t = 1 + 2 * 3;}`;
 }
