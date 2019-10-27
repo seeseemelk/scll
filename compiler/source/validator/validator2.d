@@ -1,5 +1,7 @@
 module validator.validator2;
 
+import validator.expressions;
+import validator.statements;
 import parser;
 import validator.fqn;
 import validator.types;
@@ -48,7 +50,7 @@ class LibraryInterfaceMethod : Type
 		return true;
 	}
 
-	const(FQN) type() const
+	const(FQN) fqn() const
 	{
 		return name;
 	}
@@ -60,6 +62,7 @@ class LibraryMethod : Type
 	FQN name;
 	Type returnType;
 	NamedType[] parameters;
+	LibraryStatement[] statements;
 
 	this(const Method method)
 	{
@@ -81,7 +84,7 @@ class LibraryMethod : Type
 		return true;
 	}
 
-	const(FQN) type() const
+	const(FQN) fqn() const
 	{
 		return name;
 	}
@@ -151,7 +154,7 @@ class LibraryStruct : Type
 		return true;
 	}
 
-	const(FQN) type() const
+	const(FQN) fqn() const
 	{
 		return name;
 	}
@@ -204,6 +207,16 @@ class LibraryDocument
 			}
 		}
 		throw new Exception("Type " ~ path.toString() ~ " not found");
+	}
+
+	LibraryMethod findMethod(FQN methodName)
+	{
+		foreach (method; methods)
+		{
+			if (method.name == methodName)
+				return method;
+		}
+		throw new Exception("Method " ~ methodName.toString() ~ " not found");
 	}
 }
 
@@ -368,7 +381,7 @@ class Library
 		}
 	}
 
-	/// Second pass will validate method bodies.
+	/// Second pass will populate method bodies.
 	void secondPass()
 	{
 		// Pass every document
@@ -391,7 +404,7 @@ class Library
 						context.locals ~= member;
 					}
 					context.locals ~= new NamedType("this", structure);
-					validateMethod(context, method);
+					populateMethod(context, method);
 				}
 			}
 
@@ -399,39 +412,70 @@ class Library
 			foreach (method; document.methods)
 			{
 				Context context = new Context(document);
-				validateMethod(context, method);
+				populateMethod(context, method);
 			}
 		}
 	}
 
-	void validateMethod(Context context, LibraryMethod method)
+	void populateMethod(Context context, LibraryMethod method)
 	{
 		foreach (statement; method.method.statements)
 		{
+			LibraryStatement lstatement;
 			final switch (statement.type)
 			{
 				case Statement.StatementType.declaringAssignment:
-					validateDeclaringAssignmentStatement(context, statement.declaringAssignmentStatement);
+					lstatement = createDeclaringAssignmentStatement(context, statement.declaringAssignmentStatement);
 					break;
 				case Statement.StatementType.assignment:
-					validateAssignmentStatement(context, statement.assignmentStatement);
-					break;
+					assert(0);
+					//validateAssignmentStatement(context, statement.assignmentStatement);
+					//break;
 				case Statement.StatementType.call:
-					validateCallStatement(context, statement.callStatement);
+					//validateCallStatement(context, statement.callStatement);
+					lstatement = createCallStatement(context, statement.callStatement);
 					break;
 			}
+			method.statements ~= lstatement;
 		}
 	}
 
-	void validateDeclaringAssignmentStatement(Context context, const DeclaringAssignmentStatement statement)
+	LibraryDeclaringAssignmentStatement createDeclaringAssignmentStatement(Context context, const DeclaringAssignmentStatement statement)
 	{
+		LibraryDeclaringAssignmentStatement lstatement = new LibraryDeclaringAssignmentStatement();
 		Type targetType = findType(context.document, statement.type);
-		Type expressionType = typeOf(context, statement.expression);
-		if (targetType != expressionType)
-			throw new Exception("Expected a " ~ targetType.type().toString() ~ ", but got a " ~ expressionType.type().toString());
+
+		lstatement.variableName = statement.name;
+		lstatement.variableType = targetType;
+		lstatement.expression = createExpression(context, statement.expression);
+
+		if (lstatement.expression.resultType() != lstatement.variableType)
+			throw new Exception("Expected a " ~ targetType.fqn().toString() ~ ", but got a " ~ lstatement.expression.resultType().fqn().toString());
+		
+		return lstatement;
 	}
 
-	void validateAssignmentStatement(Context context, const AssignmentStatement statement)
+	LibraryCallStatement createCallStatement(Context context, const CallStatement statement)
+	{
+		LibraryCallStatement lstatement = new LibraryCallStatement();
+
+		lstatement.targetMethod = findMethod(context, statement.targetFunction);
+
+		foreach (expression; statement.arguments)
+		{
+			lstatement.expressions ~= createExpression(context, expression);
+		}
+
+		Type[] types = lstatement.expressions.map!(exp => exp.resultType()).array();
+		if (!lstatement.targetMethod.isInstantiableWith(types))
+		{
+			throw new Exception("Method not callable with given arguments");
+		}
+
+		return lstatement;
+	}
+
+	/*void validateAssignmentStatement(Context context, const AssignmentStatement statement)
 	{
 		Type targetType = findType(context.document, statement.name);
 		Type expressionType = typeOf(context, statement.expression);
@@ -449,9 +493,46 @@ class Library
 			throw new Exception(type.type.toString ~ " is not instantiable with types "
 					~ arguments.map!(arg => arg.type.toString()).join(", "));
 		}
+	}*/
+
+	LibraryExpression createExpression(Context context, const Expression expression)
+	{
+		switch (expression.type)
+		{
+			case Expression.ExpressionType.constructionExpression:
+				return createConstructionExpression(context, expression.constructionExpression);
+			case Expression.ExpressionType.numberLiteral:
+				return createNumberExpression(context, expression.numberLiteral);
+			default:
+				assert(0);
+		}
 	}
 
-	Type typeOf(Context context, const Expression expression)
+	LibraryConstructionExpression createConstructionExpression(Context context, const ConstructionExpression expression)
+	{
+		LibraryConstructionExpression lexpression = new LibraryConstructionExpression();
+		lexpression.constructorType = findType(context, expression.type);
+		foreach (argument; expression.arguments)
+		{
+			lexpression.arguments ~= createExpression(context, argument);
+		}
+		Type[] parameters = lexpression.arguments.map!(exp => exp.resultType()).array();
+		if (!lexpression.constructorType.isInstantiableWith(parameters))
+		{
+			string name = parameters.map!(type => type.fqn().toString()).join(", ");
+			throw new Exception("Struct " ~ lexpression.resultType.fqn.toString() ~ " is not instantiable with parameters " ~ name);
+		}
+		return lexpression;
+	}
+
+	LibraryNumberLiteralExpression createNumberExpression(Context context, const string value)
+	{
+		LibraryNumberLiteralExpression lexpression = new LibraryNumberLiteralExpression();
+		lexpression.number = value;
+		return lexpression;
+	}
+
+	/*Type typeOf(Context context, const Expression expression)
 	{
 		final switch (expression.type)
 		{
@@ -491,7 +572,7 @@ class Library
 		}
 
 		return arguments;
-	}
+	}*/
 
 	Type findType(Context context, const PathIdentifier identifier)
 	{
@@ -521,6 +602,21 @@ class Library
 	{
 		string moduleName = fqn.parts[0];
 		return findDocument(moduleName).findType(fqn);
+	}
+
+	LibraryMethod findMethod(Context context, const PathIdentifier identifier)
+	{
+		return findMethod(context.document, identifier);
+	}
+
+	LibraryMethod findMethod(LibraryDocument document, const PathIdentifier identifier)
+	{
+		return findMethod(makeFQN(document.document, identifier));
+	}
+
+	LibraryMethod findMethod(FQN fqn)
+	{
+		return findDocument(fqn.parts[0]).findMethod(fqn);
 	}
 
 	LibraryDocument findDocument(string moduleName)
@@ -604,7 +700,7 @@ unittest
 	struct Test {var a;}
 	struct OtherTest {Test wow;}
 	`);
-	assert(document.structs[0].members[0].type.type().toString() == "var");
+	assert(document.structs[0].members[0].type.fqn().toString() == "var");
 	assert(document.structs[0].members[0].type.isPrimitive());
 
 	assert(parseDocument(`
@@ -616,18 +712,18 @@ unittest
 	module myModule;
 	struct Bee {}
 	struct Test {Bee testMethod() {}}
-	`).structs[1].methods[0].returnType.type().toString() == "myModule.Bee", "Struct method return type was not correctly parsed");
+	`).structs[1].methods[0].returnType.fqn().toString() == "myModule.Bee", "Struct method return type was not correctly parsed");
 
 	assert(parseDocument(`
 	module myModule;
 	struct Bee {}
 	struct Test {var testMethod() {}}
-	`).structs[1].methods[0].returnType.type().toString() == "var", "Struct method return type was not correctly parsed");
+	`).structs[1].methods[0].returnType.fqn().toString() == "var", "Struct method return type was not correctly parsed");
 
 	assert(parseDocument(`
 	module myModule;
 	string hello() {}
-	`).methods[0].returnType.type().toString() == "string", "Method return type was not correctly parsed");
+	`).methods[0].returnType.fqn().toString() == "string", "Method return type was not correctly parsed");
 
 	assert(parseDocument(`
 	module myModule;
@@ -638,7 +734,7 @@ unittest
 	module myModule;
 	struct MyStruct {}
 	MyStruct hello() {}
-	`).methods[0].returnType.type().toString() == "myModule.MyStruct", "Method return type was not correctly parsed");
+	`).methods[0].returnType.fqn().toString() == "myModule.MyStruct", "Method return type was not correctly parsed");
 
 	assertParses(`
 	module myModule;

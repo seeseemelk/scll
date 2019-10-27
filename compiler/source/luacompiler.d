@@ -97,11 +97,11 @@ private:
     void generateStructure(const LibraryStruct structure)
     {
         addLine("--[[");
-        addLine!"Struct: %s"(structure.type.toString());
+        addLine!"Struct: %s"(structure.fqn().toString());
         indent();
         foreach (member; structure.members)
         {
-            addLine!"%s %s"(member.type.type.toString(), member.name);
+            addLine!"%s %s"(member.type.fqn().toString(), member.name);
         }
         undent();
         addLine("--]]");
@@ -158,7 +158,7 @@ private:
 
     string mangle(const Type[] types)
     {
-        return types.map!(type => type.type().parts.join("_")).array().join("__");
+        return types.map!(type => type.fqn().parts.join("_")).array().join("__");
     }
 
     string mangle(const NamedType[] types)
@@ -170,14 +170,14 @@ private:
     {
         if (type.isPrimitive)
         {
-            switch (type.type().parts[$-1])
+            switch (type.fqn().parts[$-1])
             {
                 case "string":
                     return `""`;
                 case "var":
                     return "0";
                 default:
-                    throw new Exception("Unexpected primitive type: " ~ type.type().toString());
+                    throw new Exception("Unexpected primitive type: " ~ type.fqn().toString());
             }
         }
         

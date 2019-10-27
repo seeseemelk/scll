@@ -59,7 +59,7 @@ class NamedType
 interface Type
 {
 	/// Returns a FQN of the type.
-	const(FQN) type() const;
+	const(FQN) fqn() const;
 
 	/// True if the Type is a primitive type, false if it isn't
 	bool isPrimitive() const;
@@ -75,7 +75,7 @@ class PrimitiveType : Type
 		_fqn = makeFQN(identifier);
 	}
 
-	const(FQN) type() const
+	const(FQN) fqn() const
 	{
 		return _fqn;
 	}
@@ -94,7 +94,7 @@ class PrimitiveType : Type
 		if (!type.isPrimitive())
 			return false;
 		
-		return type.type().toString() == _fqn.toString();
+		return type.fqn().toString() == _fqn.toString();
 	}
 
 	override bool opEquals(Object b)
@@ -116,7 +116,7 @@ class UserType : Type
 		_fqn = fqn;
 	}
 
-	const(FQN) type() const
+	const(FQN) fqn() const
 	{
 		return _fqn;
 	}

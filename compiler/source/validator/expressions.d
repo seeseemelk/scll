@@ -2,18 +2,49 @@ module validator.expressions;
 
 import validator.types;
 
-enum ExpressionType
+/*enum ExpressionType
 {
-	constructionExpression
+	constructionExpression,
+	numberLiteralExpression
+}*/
+
+interface LibraryExpression
+{
+	Type resultType();
 }
 
-class LibraryConstructionExpression
+class LibraryConstructionExpression : LibraryExpression
 {
 	Type constructorType;
 	LibraryExpression[] arguments;
+
+	/*ExpressionType expressionType()
+	{
+		return ExpressionType.constructionExpression;
+	}*/
+
+	Type resultType()
+	{
+		return constructorType;
+	}
 }
 
-class LibraryExpression
+class LibraryNumberLiteralExpression : LibraryExpression
+{
+	string number;
+
+	/*ExpressionType expressionType()
+	{
+		return ExpressionType.numberLiteralExpression;
+	}*/
+ 
+	Type resultType()
+	{
+		return new PrimitiveType("var");
+	}
+}
+
+/*class LibraryExpression
 {
 	ExpressionType type;
 
@@ -21,4 +52,4 @@ class LibraryExpression
 	{
 		LibraryConstructionExpression constructionExpression;
 	}
-}
+}*/
