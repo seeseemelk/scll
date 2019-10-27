@@ -114,7 +114,7 @@ private:
 
     void generateStructConstructor(const LibraryStruct structure, const LibraryConstructor constructor)
     {
-        string funcName = mangle(structure.name.toString(), constructor.parameters);
+        string funcName = mangle(structure.fqn().toString(), constructor.parameters);
 
         addLine!"%s = function(%s)"(funcName, constructor.parameters.map!(type => type.name).array().join(", "));
         indent();

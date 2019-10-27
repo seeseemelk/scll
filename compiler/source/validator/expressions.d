@@ -44,6 +44,16 @@ class LibraryNumberLiteralExpression : LibraryExpression
 	}
 }
 
+class LibraryStringExpression : LibraryExpression
+{
+	string value;
+
+	Type resultType()
+	{
+		return new PrimitiveType("string");
+	}
+}
+
 /*class LibraryExpression
 {
 	ExpressionType type;

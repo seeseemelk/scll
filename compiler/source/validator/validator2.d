@@ -23,12 +23,16 @@ class NamedType
 	}
 }
 
-class LibraryInterfaceMethod : Type
+interface LibraryMethodDefinition : Type
+{
+	Type returnType();
+	const(NamedType[]) parameters() const;
+}
+
+class LibraryInterfaceMethod : Type, LibraryMethodDefinition
 {
 	const MethodDefinition method;
 	FQN name;
-	Type returnType;
-	NamedType[] parameters;
 
 	this(const MethodDefinition method)
 	{
@@ -42,7 +46,7 @@ class LibraryInterfaceMethod : Type
 
 	bool isInstantiableWith(const Type[] types) const
 	{
-		foreach (i, parameter; parameters)
+		foreach (i, parameter; _parameters)
 		{
 			if (!parameter.type.isInstantiableWith([types[i]]))
 				return false;
@@ -54,15 +58,37 @@ class LibraryInterfaceMethod : Type
 	{
 		return name;
 	}
+
+	Type returnType()
+	{
+		return _returnType;
+	}
+
+	void returnType(Type returnType)
+	{
+		_returnType = returnType;
+	}
+
+	const(NamedType[]) parameters() const
+	{
+		return _parameters;
+	}
+
+	void addParameter(NamedType type)
+	{
+		_parameters ~= type;
+	}
+
+private:
+	Type _returnType;
+	NamedType[] _parameters;
 }
 
-class LibraryMethod : Type
+class LibraryMethod : Type, LibraryMethodDefinition
 {
 	const Method method;
-	FQN name;
-	Type returnType;
-	NamedType[] parameters;
 	LibraryStatement[] statements;
+	FQN name;
 
 	this(const Method method)
 	{
@@ -76,7 +102,7 @@ class LibraryMethod : Type
 
 	bool isInstantiableWith(const Type[] types) const
 	{
-		foreach (i, parameter; parameters)
+		foreach (i, parameter; _parameters)
 		{
 			if (!parameter.type.isInstantiableWith([types[i]]))
 				return false;
@@ -88,6 +114,30 @@ class LibraryMethod : Type
 	{
 		return name;
 	}
+
+	Type returnType()
+	{
+		return _returnType;
+	}
+
+	void returnType(Type returnType)
+	{
+		_returnType = returnType;
+	}
+
+	const(NamedType[]) parameters() const
+	{
+		return _parameters;
+	}
+
+	void addParameter(NamedType type)
+	{
+		_parameters ~= type;
+	}
+
+private:
+	Type _returnType;
+	NamedType[] _parameters;
 }
 
 class LibraryConstructor
@@ -105,10 +155,10 @@ class LibraryConstructor
 class LibraryStruct : Type
 {
 	const StructDefinition definition;
-	FQN name;
 	NamedType[] members;
 	LibraryMethod[] methods;
 	LibraryConstructor[] constructors;
+	FQN name;
 
 	this(const StructDefinition definition)
 	{
@@ -209,12 +259,20 @@ class LibraryDocument
 		throw new Exception("Type " ~ path.toString() ~ " not found");
 	}
 
-	LibraryMethod findMethod(FQN methodName)
+	LibraryMethodDefinition findMethod(FQN methodName)
 	{
 		foreach (method; methods)
 		{
 			if (method.name == methodName)
 				return method;
+		}
+		foreach (intrf; interfaces)
+		{
+			foreach (method; intrf.methods)
+			{
+				if (method.name == methodName)
+					return method;
+			}
 		}
 		throw new Exception("Method " ~ methodName.toString() ~ " not found");
 	}
@@ -354,7 +412,7 @@ class Library
 					method.returnType = findType(document, method.method.returnType);
 					foreach (parameter; method.method.parameters)
 					{
-						method.parameters ~= new NamedType(parameter.name, findType(document, parameter.type));
+						method.addParameter(new NamedType(parameter.name, findType(document, parameter.type)));
 					}
 				}
 			}
@@ -377,7 +435,7 @@ class Library
 		method.returnType = findType(document, method.method.definition.returnType);
 		foreach (parameter; method.method.definition.parameters)
 		{
-			method.parameters ~= new NamedType(parameter.name, findType(document, parameter.type));
+			method.addParameter(new NamedType(parameter.name, findType(document, parameter.type)));
 		}
 	}
 
@@ -497,14 +555,16 @@ class Library
 
 	LibraryExpression createExpression(Context context, const Expression expression)
 	{
-		switch (expression.type)
+		final switch (expression.type)
 		{
 			case Expression.ExpressionType.constructionExpression:
 				return createConstructionExpression(context, expression.constructionExpression);
 			case Expression.ExpressionType.numberLiteral:
 				return createNumberExpression(context, expression.numberLiteral);
-			default:
-				assert(0);
+			case Expression.ExpressionType.stringLiteral:
+				return createStringExpression(context, expression.stringLiteral);
+			case Expression.ExpressionType.identifier:
+				assert(0, "Identifier not implemented");
 		}
 	}
 
@@ -529,6 +589,13 @@ class Library
 	{
 		LibraryNumberLiteralExpression lexpression = new LibraryNumberLiteralExpression();
 		lexpression.number = value;
+		return lexpression;
+	}
+
+	LibraryStringExpression createStringExpression(Context context, const string value)
+	{
+		LibraryStringExpression lexpression = new LibraryStringExpression();
+		lexpression.value = value;
 		return lexpression;
 	}
 
@@ -604,17 +671,17 @@ class Library
 		return findDocument(moduleName).findType(fqn);
 	}
 
-	LibraryMethod findMethod(Context context, const PathIdentifier identifier)
+	LibraryMethodDefinition findMethod(Context context, const PathIdentifier identifier)
 	{
 		return findMethod(context.document, identifier);
 	}
 
-	LibraryMethod findMethod(LibraryDocument document, const PathIdentifier identifier)
+	LibraryMethodDefinition findMethod(LibraryDocument document, const PathIdentifier identifier)
 	{
 		return findMethod(makeFQN(document.document, identifier));
 	}
 
-	LibraryMethod findMethod(FQN fqn)
+	LibraryMethodDefinition findMethod(FQN fqn)
 	{
 		return findDocument(fqn.parts[0]).findMethod(fqn);
 	}

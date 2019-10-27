@@ -12,7 +12,7 @@ interface LibraryStatement
 
 class LibraryCallStatement : LibraryStatement
 {
-	LibraryMethod targetMethod;
+	LibraryMethodDefinition targetMethod;
 	LibraryExpression[] expressions;
 }
 
