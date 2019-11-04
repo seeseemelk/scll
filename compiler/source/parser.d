@@ -39,7 +39,21 @@ struct PathIdentifier
 struct InterfaceDefinition
 {
     string name;
-    MethodDefinition[] methods;
+    InterfaceMethodDefinition[] methods;
+}
+
+struct InterfaceMethodDefinition
+{
+	MethodDefinition method;
+	string target;
+
+	this(const ref ParseTree tree)
+	{
+		assertTree!"SCLL.InterfaceMethodDefinition"(tree);
+
+		method = MethodDefinition(tree.children[0]);
+		target = tree.children[1].matches[0];
+	}
 }
 
 /// Defines a method
@@ -106,7 +120,6 @@ struct Statement
 {
     enum StatementType
     {
-        call,
 		declaringAssignment,
         assignment
     }
@@ -114,7 +127,6 @@ struct Statement
     StatementType type;
     union
     {
-        CallStatement callStatement;
 		DeclaringAssignmentStatement declaringAssignmentStatement;
         AssignmentStatement assignmentStatement;
     }
@@ -130,10 +142,6 @@ private:
     {
         switch (tree.name)
         {
-            case "SCLL.CallStatement":
-                type = StatementType.call;
-                callStatement = CallStatement(tree);
-                break;
 			case "SCLL.DeclaringAssignmentStatement":
 				type = StatementType.declaringAssignment;
 				declaringAssignmentStatement = DeclaringAssignmentStatement(tree);
@@ -144,23 +152,6 @@ private:
                 break;
             default:
                 assertUnexpected(tree);
-        }
-    }
-}
-
-struct CallStatement
-{
-    PathIdentifier targetFunction;
-    Expression[] arguments;
-
-    this(const ref ParseTree tree)
-    {
-        targetFunction = PathIdentifier(tree.children[0]);
-        if (tree.children.length == 1)
-            return;
-        foreach (child; tree.children[1].children)
-        {
-            arguments ~= Expression(child);
         }
     }
 }
@@ -192,52 +183,6 @@ struct AssignmentStatement
     }
 }
 
-/*struct Expression
-{
-    enum ExpressionType
-    {
-        terminalExpression,
-		constructionExpression,
-		addSubExpression,
-		mulDivModExpression
-    }
-
-    ExpressionType type;
-    union
-    {
-		TerminalExpression terminalExpression;
-		ConstructionExpression constructionExpression;
-		AddSubExpression addSubExpression;
-		MulDivModExpression mulDivModExpression;
-    }
-
-    this(const ref ParseTree tree)
-    {
-        assertTree!"SCLL.Expression"(tree);
-        visitChild(tree.children[0]);
-    }
-
-private:
-    void visitChild(const ref ParseTree tree)
-    {
-        switch (tree.name)
-        {
-			/*case "SCLL.TerminalExpression":
-				type = ExpressionType.terminalExpression;
-				visitChild(tree.children[0]);
-				break;
-			case "SCLL.ConstructionExpression":
-				type = ExpressionType.constructionExpression;
-				constructionExpression = ConstructionExpression(tree.children[0]);
-				break;*/
-            /*default:
-                assertUnexpected(tree);
-        }
-    }
-
-    
-}*/
-
 struct Expression
 {
 	AddSubExpression addSubExpression;
@@ -256,6 +201,7 @@ struct TerminalExpression
         identifier,
         stringLiteral,
         numberLiteral,
+		callExpression,
 		constructionExpression
 	}
 
@@ -265,6 +211,7 @@ struct TerminalExpression
         string identifier;
         string stringLiteral;
         string numberLiteral;
+		CallExpression callExpression;
 		ConstructionExpression constructionExpression;
 	}
 
@@ -278,6 +225,10 @@ struct TerminalExpression
 	{
         switch (tree.name)
         {
+			case "SCLL.CallExpression":
+				type = ExpressionType.callExpression;
+				callExpression = CallExpression(tree);
+				break;
 			case "SCLL.ConstructionExpression":
 				type = ExpressionType.constructionExpression;
 				constructionExpression = ConstructionExpression(tree);
@@ -323,30 +274,94 @@ struct ConstructionExpression
 	}
 }
 
+struct CallExpression
+{
+    PathIdentifier targetFunction;
+    Expression[] arguments;
+
+    this(const ref ParseTree tree)
+    {
+        targetFunction = PathIdentifier(tree.children[0]);
+        if (tree.children.length == 1)
+            return;
+        foreach (child; tree.children[1].children)
+        {
+            arguments ~= Expression(child);
+        }
+    }
+}
+
+enum AddSubOperator
+{
+	add, sub
+}
+
 struct AddSubExpression
 {
+	AddSubOperator[] operators;
 	MulDivModExpression[] operands;
 
 	this(const ref ParseTree tree)
 	{
         assertTree!"SCLL.AddSubExpression"(tree);
-		foreach (child; tree.children)
+		foreach (i, child; tree.children)
 		{
-			operands ~= MulDivModExpression(child);
+			if (i % 2 == 0)
+				operands ~= MulDivModExpression(child);
+			else
+			{
+				switch (child.name)
+				{
+					case "SCLL.AddOperator":
+						operators ~= AddSubOperator.add;
+						break;
+					case "SCLL.SubOperator":
+						operators ~= AddSubOperator.sub;
+						break;
+					default:
+						assertUnexpected(child);
+						break;
+				}
+			}
 		}
 	}
 }
 
+enum MulDivModOperator
+{
+	mul, div, mod
+}
+
 struct MulDivModExpression
 {
+	MulDivModOperator[] operators;
 	TerminalExpression[] operands;
 
 	this(const ref ParseTree tree)
 	{
         assertTree!"SCLL.MulDivModExpression"(tree);
-		foreach (child; tree.children)
+		foreach (i, child; tree.children)
 		{
-			operands ~= TerminalExpression(child);
+			if (i % 2 == 0)
+				operands ~= TerminalExpression(child);
+			else
+			{
+				switch (child.name)
+				{
+					case "SCLL.MulOperator":
+						operators ~= MulDivModOperator.mul;
+						break;
+					case "SCLL.DivOperator":
+						operators ~= MulDivModOperator.div;
+						break;
+					case "SCLL.ModOperator":
+						operators ~= MulDivModOperator.mod;
+						break;
+					default:
+						assertUnexpected(child);
+						break;
+				}
+			}
 		}
 	}
 }
@@ -514,7 +529,7 @@ private:
         {
             foreach (child; tree.children[1..$])
             {
-                definition.methods ~= MethodDefinition(child);
+                definition.methods ~= InterfaceMethodDefinition(child);
             }
         }
 

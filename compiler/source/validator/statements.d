@@ -7,7 +7,6 @@ import validator.types;
 
 interface StatementVisitor
 {
-	void visitCallStatement(const LibraryCallStatement statement);
 	void visitDeclaringAssignmentStatement(const LibraryDeclaringAssignmentStatement statement);
 	void visitAssignmentStatement(const LibraryAssignmentStatement statement);
 }
@@ -15,17 +14,6 @@ interface StatementVisitor
 interface LibraryStatement
 {
 	void visit(StatementVisitor visitor) const;
-}
-
-class LibraryCallStatement : LibraryStatement
-{
-	LibraryMethodDefinition targetMethod;
-	LibraryExpression[] expressions;
-
-	void visit(StatementVisitor visitor) const
-	{
-		visitor.visitCallStatement(this);
-	}
 }
 
 class LibraryDeclaringAssignmentStatement : LibraryStatement
@@ -42,7 +30,8 @@ class LibraryDeclaringAssignmentStatement : LibraryStatement
 
 class LibraryAssignmentStatement : LibraryStatement
 {
-	FQN variableName;
+	string variableName;
+	Type variableType;
 	LibraryExpression expression;
 
 	void visit(StatementVisitor visitor) const

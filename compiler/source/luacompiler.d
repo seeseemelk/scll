@@ -50,17 +50,17 @@ class Compiler : StatementVisitor
 
 	void visitAssignmentStatement(const LibraryAssignmentStatement statement)
 	{
-		string name = statement.variableName.toString();
+		string name = statement.variableName;
 		string expression = visitExpression(statement.expression);
 		addLine!"%s = %s"(name, expression);
 	}
 
-	void visitCallStatement(const LibraryCallStatement statement)
+	/*void visitCallStatement(const LibraryCallStatement statement)
 	{
-		string name = statement.targetMethod.fqn().toString();
+		string name = LuaMangler.mangle(statement.targetMethod);
 		string[] expressions = statement.expressions.map!(exp => visitExpression(exp)).array();
 		addLine!"%s(%s)"(name, expressions.join(", "));
-	}
+	}*/
 
 private:
     string _buffer;
@@ -129,6 +129,7 @@ private:
         }
         undent();
         addLine("--]]");
+		addLine!"%s = {}"(structure.fqn().toString);
 
         foreach (constructor; structure.constructors)
         {
@@ -140,7 +141,7 @@ private:
     {
         string funcName = mangle(structure.fqn().toString(), constructor.parameters);
 
-        addLine!"%s = function(%s)"(funcName, constructor.parameters.map!(type => type.name).array().join(", "));
+        addLine!"%s.new = function(%s)"(funcName, constructor.parameters.map!(type => type.name).array().join(", "));
         indent();
 
         addLine!"local this = {}";
@@ -248,6 +249,18 @@ private class LuaExpressionBuilder : ExpressionVisitor
 	{
 		this.context = context;
 	}
+
+	string visitExpression(const LibraryExpression expression)
+	{
+		LuaExpressionBuilder builder = new LuaExpressionBuilder(context);
+		expression.visit(builder);
+		return builder.buffer;
+	}
+
+	void visitCallExpression(const LibraryCallExpression expression)
+	{
+		buffer = format!"%s()"(LuaMangler.mangle(expression.targetMethod));
+	}
 	
 	void visitConstructionExpression(const LibraryConstructionExpression expression)
 	{
@@ -266,12 +279,74 @@ private class LuaExpressionBuilder : ExpressionVisitor
 
 	void visitAddSubExpression(const LibraryAddSubExpression expression)
 	{
-		
+		foreach (i, child; expression.expressions)
+		{
+			buffer ~= visitExpression(child);
+			if (i < expression.operators.length)
+			{
+				final switch (expression.operators[i])
+				{
+					case AddSubOperator.add:
+						buffer ~= " + ";
+						break;
+					case AddSubOperator.sub:
+						buffer ~= " - ";
+						break;
+				}
+			}
+		}
+		buffer = addParenthesisWhenLong(buffer, expression.expressions.length);
 	}
 
 	void visitMulDivModExpression(const LibraryMulDivModExpression expression)
 	{
-		
+		foreach (i, child; expression.expressions)
+		{
+			buffer ~= visitExpression(child);
+			if (i < expression.operators.length)
+			{
+				final switch (expression.operators[i])
+				{
+					case MulDivModOperator.mul:
+						buffer ~= " * ";
+						break;
+					case MulDivModOperator.div:
+						buffer ~= " / ";
+						break;
+					case MulDivModOperator.mod:
+						buffer ~= " % ";
+						break;
+				}
+			}
+		}
+		buffer = addParenthesisWhenLong(buffer, expression.expressions.length);
+	}
+
+	string addParenthesisWhenLong(string buffer, ulong length)
+	{
+		if (length <= 1)
+			return buffer;
+		else
+			return "(" ~ buffer ~ ")";
+	}
+}
+
+private class LuaMangler : MethodMangler
+{
+	string mangleMethod(const LibraryMethod method)
+	{
+		string methodName = method.fqn.parts[$-1];
+		const string[] parameterNames = method.parameters().map!(type => type.name).array();
+
+		if (parameterNames.length == 0)
+			return methodName;
+		return methodName ~ "__" ~ parameterNames.join("_");
+	}
+
+	private static string mangle(const LibraryMethodDefinition method)
+	{
+		LuaMangler mangler = new LuaMangler();
+		return method.mangle(mangler);
 	}
 }
 

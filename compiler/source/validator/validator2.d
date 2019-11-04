@@ -23,18 +23,13 @@ class NamedType
 	}
 }
 
-interface LibraryMethodDefinition : Type
-{
-	Type returnType();
-	const(NamedType[]) parameters() const;
-}
-
 class LibraryInterfaceMethod : Type, LibraryMethodDefinition
 {
-	const MethodDefinition method;
+	const InterfaceMethodDefinition method;
 	FQN name;
+	string mangleAs;
 
-	this(const MethodDefinition method)
+	this(const InterfaceMethodDefinition method)
 	{
 		this.method = method;
 	}
@@ -77,6 +72,11 @@ class LibraryInterfaceMethod : Type, LibraryMethodDefinition
 	void addParameter(NamedType type)
 	{
 		_parameters ~= type;
+	}
+
+	string mangle(MethodMangler _) const
+	{
+		return mangleAs;
 	}
 
 private:
@@ -133,6 +133,11 @@ class LibraryMethod : Type, LibraryMethodDefinition
 	void addParameter(NamedType type)
 	{
 		_parameters ~= type;
+	}
+
+	string mangle(MethodMangler mangler) const
+	{
+		return mangler.mangleMethod(this);
 	}
 
 private:
@@ -317,7 +322,10 @@ class Library
 	LibraryDocument addDocument(const ref Document document)
 	{
 		LibraryDocument libraryDocument = new LibraryDocument(document);
-		libraryDocument.name = makeFQN(document.moduleName);
+		if (document.moduleName.path.length > 0)
+			libraryDocument.name = makeFQN(document.moduleName);
+		else
+			libraryDocument.name = makeFQN("_default_");
 
 		// Find every struct
 		foreach (structure; document.structs)
@@ -362,9 +370,8 @@ class Library
 			foreach (method; intrf.methods)
 			{
 				LibraryInterfaceMethod libraryMethod = new LibraryInterfaceMethod(method);
-				writeln("Interface method name: " ~ method.name);
-				libraryMethod.name = libraryInterface.childFQN(method.name);
-				writeln("Interface method name: " ~ libraryMethod.name.toString());
+				libraryMethod.name = libraryInterface.childFQN(method.method.name);
+				libraryMethod.mangleAs = method.target;
 				libraryInterface.methods ~= libraryMethod;
 			}
 		}
@@ -409,8 +416,8 @@ class Library
 				// Pass every interface method
 				foreach (method; intrf.methods)
 				{
-					method.returnType = findType(document, method.method.returnType);
-					foreach (parameter; method.method.parameters)
+					method.returnType = findType(document, method.method.method.returnType);
+					foreach (parameter; method.method.method.parameters)
 					{
 						method.addParameter(new NamedType(parameter.name, findType(document, parameter.type)));
 					}
@@ -486,12 +493,7 @@ class Library
 					lstatement = createDeclaringAssignmentStatement(context, statement.declaringAssignmentStatement);
 					break;
 				case Statement.StatementType.assignment:
-					assert(0);
-					//validateAssignmentStatement(context, statement.assignmentStatement);
-					//break;
-				case Statement.StatementType.call:
-					//validateCallStatement(context, statement.callStatement);
-					lstatement = createCallStatement(context, statement.callStatement);
+					lstatement = createAssignmentStatement(context, statement.assignmentStatement);
 					break;
 			}
 			method.statements ~= lstatement;
@@ -510,10 +512,25 @@ class Library
 		if (lstatement.expression.resultType() != lstatement.variableType)
 			throw new Exception("Expected a " ~ targetType.fqn().toString() ~ ", but got a " ~ lstatement.expression.resultType().fqn().toString());
 		
+		context.locals ~= new NamedType(lstatement.variableName, lstatement.variableType);
+
 		return lstatement;
 	}
 
-	LibraryCallStatement createCallStatement(Context context, const CallStatement statement)
+	LibraryAssignmentStatement createAssignmentStatement(Context context, const AssignmentStatement statement)
+	{
+		LibraryAssignmentStatement lstatement = new LibraryAssignmentStatement();
+
+		string name = statement.name;
+		lstatement.variableName = name;
+		lstatement.variableType = findLocalType(context, name);
+
+		lstatement.expression = createExpression(context, statement.expression);
+
+		return lstatement;
+	}
+
+	/*LibraryCallStatement createCallStatement(Context context, const CallStatement statement)
 	{
 		LibraryCallStatement lstatement = new LibraryCallStatement();
 
@@ -531,41 +548,10 @@ class Library
 		}
 
 		return lstatement;
-	}
-
-	/*void validateAssignmentStatement(Context context, const AssignmentStatement statement)
-	{
-		Type targetType = findType(context.document, statement.name);
-		Type expressionType = typeOf(context, statement.expression);
-		if (targetType != expressionType)
-			throw new Exception("Expected a " ~ targetType.type().toString() ~ ", but got a " ~ expressionType.type().toString());
-	}
-
-	void validateCallStatement(Context context, const CallStatement statement)
-	{
-		Type type = findType(context, statement.targetFunction);
-		Type[] arguments = typesOf(context, statement.arguments);
-
-		if (!type.isInstantiableWith(arguments))
-		{
-			throw new Exception(type.type.toString ~ " is not instantiable with types "
-					~ arguments.map!(arg => arg.type.toString()).join(", "));
-		}
 	}*/
 
 	LibraryExpression createExpression(Context context, const Expression expression)
 	{
-		/*final switch (expression.type)
-		{
-			case Expression.ExpressionType.terminalExpression:
-				return createTerminalExpression(context, expression.terminalExpression);
-			case Expression.ExpressionType.constructionExpression:
-				return createConstructionExpression(context, expression.constructionExpression);
-			case Expression.ExpressionType.addSubExpression:
-				return createAddSubExpression(context, expression.addSubExpression);
-			case Expression.ExpressionType.mulDivModExpression:
-				return createMulDivModExpression(context, expression.mulDivModExpression);
-		}*/
 		return createAddSubExpression(context, expression.addSubExpression);
 	}
 
@@ -577,11 +563,32 @@ class Library
 				return createNumberExpression(context, expression.numberLiteral);
 			case TerminalExpression.ExpressionType.stringLiteral:
 				return createStringExpression(context, expression.stringLiteral);
+			case TerminalExpression.ExpressionType.callExpression:
+				return createCallExpression(context, expression.callExpression);
 			case TerminalExpression.ExpressionType.constructionExpression:
 				return createConstructionExpression(context, expression.constructionExpression);
 			case TerminalExpression.ExpressionType.identifier:
 				assert(0, "Identifier not implemented");
 		}
+	}
+
+	LibraryCallExpression createCallExpression(Context context, const CallExpression expression)
+	{
+		LibraryCallExpression lexpression = new LibraryCallExpression();
+		lexpression.targetMethod = findMethod(context, expression.targetFunction);
+
+		foreach (childExpression; expression.arguments)
+		{
+			lexpression.expressions ~= createExpression(context, childExpression);
+		}
+
+		Type[] types = lexpression.expressions.map!(exp => exp.resultType()).array();
+		if (!lexpression.targetMethod.isInstantiableWith(types))
+		{
+			throw new Exception("Method not callable with given arguments");
+		}
+
+		return lexpression;
 	}
 
 	LibraryConstructionExpression createConstructionExpression(Context context, const ConstructionExpression expression)
@@ -618,6 +625,8 @@ class Library
 	LibraryAddSubExpression createAddSubExpression(Context context, const AddSubExpression expression)
 	{
 		LibraryAddSubExpression lexpression = new LibraryAddSubExpression();
+		foreach (child; expression.operators)
+			lexpression.operators ~= child;
 		foreach (child; expression.operands)
 			lexpression.expressions ~= createMulDivModExpression(context, child);
 		requireExpressionsAre("var", lexpression.expressions);
@@ -627,6 +636,8 @@ class Library
 	LibraryMulDivModExpression createMulDivModExpression(Context context, const MulDivModExpression expression)
 	{
 		LibraryMulDivModExpression lexpression = new LibraryMulDivModExpression();
+		foreach (child; expression.operators)
+			lexpression.operators ~= child;
 		foreach (child; expression.operands)
 			lexpression.expressions ~= createTerminalExpression(context, child);
 		requireExpressionsAre("var", lexpression.expressions);
@@ -642,9 +653,24 @@ class Library
 				throw new Exception("Arithmetic with " ~ child.resultType().fqn().toString() ~ " is not legal");
 	}
 
+	Type findLocalType(Context context, string name)
+	{
+		foreach (local; context.locals)
+		{
+			if (local.name == name)
+				return local.type;
+		}
+		throw new Exception("Variable " ~ name ~ " not found");
+	}
+
 	Type findType(Context context, const PathIdentifier identifier)
 	{
 		return findType(context.document, identifier);
+	}
+
+	Type findType(Context context, string name)
+	{
+		return findType(context.document, name);
 	}
 
 	Type findType(LibraryDocument document, string name)
@@ -872,7 +898,7 @@ unittest
 	module myModule;
 	interface io
 	{
-		void write(string name);
+		void write(string name) = "io.write";
 	}
 	void main()
 	{
@@ -884,7 +910,7 @@ unittest
 	module myModule;
 	interface io
 	{
-		void write(string name);
+		void write(string name) = "io.write";
 	}
 	void main()
 	{
@@ -899,10 +925,45 @@ unittest
 	}
 	`);
 
+	assertParses(`
+	void main()
+	{
+		var t = 5 + 5 * 4;
+	}
+	`);
+
 	assertNotParses(`
 	void main()
 	{
 		var t = 5 + "wow";
 	}
 	`);
+
+	assertNotParses(`
+	void main()
+	{
+		var t = 5 + 5 * "wow";
+	}
+	`);
+
+	assertNotParses(`
+	void main()
+	{
+		var t = 5 + "wow" * 4;
+	}
+	`);
+
+	assertParses(`
+	void main()
+	{
+		var t = 4;
+		t = 5;
+	}
+	`);
+
+	assertNotParses(`
+	void main()
+	{
+		t = 5;
+	}`);
 }

@@ -1,9 +1,11 @@
 module validator.expressions;
 
 import validator.types;
+import parser : AddSubOperator, MulDivModOperator;
 
 interface ExpressionVisitor
 {
+	void visitCallExpression(const LibraryCallExpression expression);
 	void visitConstructionExpression(const LibraryConstructionExpression expression);
 	void visitNumberLiteralExpression(const LibraryNumberLiteralExpression expression);
 	void visitStringExpression(const LibraryStringExpression expression);
@@ -15,6 +17,38 @@ interface LibraryExpression
 {
 	Type resultType();
 	void visit(ExpressionVisitor visitor) const;
+}
+
+interface MethodMangler
+{
+	import validator.validator2 : LibraryMethod;
+
+	string mangleMethod(const LibraryMethod method);
+}
+
+interface LibraryMethodDefinition : Type
+{
+	import validator.validator2 : NamedType;
+
+	Type returnType();
+	const(NamedType[]) parameters() const;
+	string mangle(MethodMangler mangler) const;
+}
+
+class LibraryCallExpression : LibraryExpression
+{
+	LibraryMethodDefinition targetMethod;
+	LibraryExpression[] expressions;
+
+	Type resultType()
+	{
+		return targetMethod.returnType;
+	}
+
+	void visit(ExpressionVisitor visitor) const
+	{
+		visitor.visitCallExpression(this);
+	}
 }
 
 class LibraryConstructionExpression : LibraryExpression
@@ -65,6 +99,7 @@ class LibraryStringExpression : LibraryExpression
 
 class LibraryAddSubExpression : LibraryExpression
 {
+	AddSubOperator[] operators;
 	LibraryExpression[] expressions;
 
 	Type resultType()
@@ -82,6 +117,7 @@ class LibraryAddSubExpression : LibraryExpression
 
 class LibraryMulDivModExpression : LibraryExpression
 {
+	MulDivModOperator[] operators;
 	LibraryExpression[] expressions;
 
 	Type resultType()

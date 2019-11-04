@@ -2,7 +2,8 @@ module test;
 
 interface io
 {
-	void write(string name);
+	void write(string name) = "io.write";
+	void println(string text) = "print";
 }
 
 struct Weapon
@@ -11,7 +12,6 @@ struct Weapon
 
 	new()
 	{
-		a = 4;
 	}
 
 	void print()
@@ -22,6 +22,9 @@ struct Weapon
 
 void main()
 {
+	var a = 4 + 4 * 3;
 	Weapon weapon = new Weapon();
+	io.println("This is super cool");
+	io.println("Hello");
 	//weapon.print();
 }

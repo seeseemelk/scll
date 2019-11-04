@@ -23,8 +23,9 @@ SCLL:
     InterfaceDefinition <
         "interface" Identifier
         "{"
-            (MethodDefinition ";")*
+			InterfaceMethodDefinition*
         "}"
+	InterfaceMethodDefinition < MethodDefinition "=" StringLiteral ";"
     MethodDefinition < Identifier Identifier "(" ParameterList? ")"
     ParameterList < Parameter ("," Parameter)*
     Parameter < Identifier Identifier
@@ -54,22 +55,28 @@ SCLL:
 	GlobalDeclaration < PathIdentifier Identifier ';'
 
     Statement < 
-		( CallStatement
-		/ DeclaringAssignmentStatement
+		( DeclaringAssignmentStatement
 		/ AssignmentStatement
 		) ";"
 
-    CallStatement < PathIdentifier "(" ArgumentList? ")"
+	ExpressionStatement < Expression
     ArgumentList < Expression ("," Expression)*
 
 	DeclaringAssignmentStatement < PathIdentifier Identifier "=" Expression
 	AssignmentStatement < PathIdentifier "=" Expression
 
     Expression < AddSubExpression
-	AddSubExpression < MulDivModExpression (("+" / "-") MulDivModExpression)*
-	MulDivModExpression < TerminalExpression (("*" / "/" / "%") TerminalExpression)*
-	TerminalExpression < ConstructionExpression / Literal
+	AddSubExpression < MulDivModExpression ((AddOperator / SubOperator) MulDivModExpression)*
+	MulDivModExpression < TerminalExpression ((MulOperator / DivOperator / ModOperator) TerminalExpression)*
+	TerminalExpression < ConstructionExpression / CallExpression / Literal
 	ConstructionExpression < "new" PathIdentifier "(" ArgumentList? ")"
+	CallExpression < PathIdentifier "(" ArgumentList? ")"
+
+	AddOperator < "+"
+	SubOperator < "-"
+	MulOperator < "*"
+	DivOperator < "/"
+	ModOperator < "%"
 
     Literal < Identifier / StringLiteral / NumberLiteral
     StringLiteral <~ :doublequote (!doublequote .)* :doublequote
@@ -115,12 +122,12 @@ unittest
     assertDocumentParses!`
     interface a
     {
-        void test();
+        void test() = "test";
     }`;
 
 
-    assertDocumentParses!`interface a{void test(string a);}`;
-    assertDocumentParses!`interface a{void test(string a, string b);}`;
+    assertDocumentParses!`interface a{void test(string a) = "test";}`;
+    assertDocumentParses!`interface a{void test(string a, string b) = "test";}`;
 
     assertDocumentParses!`void main() {}`;
 
@@ -133,7 +140,7 @@ unittest
 
     interface io
     {
-    	void write(string name);
+    	void write(string name) = "io.write";
     }
 
     void main()
